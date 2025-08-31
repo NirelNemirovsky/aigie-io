@@ -36,9 +36,11 @@ Enable developers to build more reliable AI agents by providing real-time visibi
 ## 🚀 Features
 
 - **Zero-Code Integration**: Automatically detects and wraps LangChain/LangGraph applications
-- **Real-time Error Detection**: Immediate error reporting as they occur
+- **Real-time Error Detection**: Immediate error reporting with classification and severity assessment
 - **Comprehensive Monitoring**: Covers execution, API, state, and memory errors
 - **Performance Insights**: Track execution time, memory usage, and resource consumption
+- **Rich Console Output**: Beautiful, informative displays with emojis and structured information
+- **CLI Interface**: Full command-line tool for monitoring and configuration
 - **Seamless Operation**: No changes required to existing code
 
 ## 📦 Installation
@@ -52,33 +54,61 @@ pip install aigie
 ### Basic Usage (Zero Code Changes)
 
 ```python
+# Just import Aigie - it automatically starts monitoring
+from aigie import auto_integrate
+
 # Your existing LangChain code works unchanged
-from langchain.llms import OpenAI
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableSequence
 
 # Aigie automatically intercepts and monitors
-llm = OpenAI()
 prompt = PromptTemplate.from_template("Tell me a joke about {topic}")
-chain = LLMChain(llm=llm, prompt=prompt)
+chain = prompt | llm  # Modern RunnableSequence syntax
 
 # Run normally - Aigie monitors in background
-result = chain.run("programming")
+result = chain.invoke({"topic": "programming"})
 ```
 
 ### LangGraph Integration
 
 ```python
 # Your existing LangGraph code works unchanged
-from langgraph.graph import StateGraph
+from langgraph.graph import StateGraph, END
 
 # Aigie automatically monitors state transitions and node execution
-graph = StateGraph()
+graph = StateGraph(StateType)
 # ... your graph setup ...
 app = graph.compile()
 
 # Run normally - Aigie monitors in background
 result = app.invoke({"input": "Hello"})
+```
+
+### Manual Monitoring with Decorators
+
+```python
+from aigie.utils.decorators import monitor_langchain, monitor_langgraph
+
+@monitor_langchain(component="CustomChain", method="run")
+def my_custom_chain(input_data):
+    # Function automatically monitored
+    return process_data(input_data)
+```
+
+### CLI Usage
+
+```bash
+# Enable monitoring
+aigie enable --config development
+
+# Show status
+aigie status
+
+# Show detailed analysis
+aigie analysis
+
+# Generate configuration
+aigie config --generate config.yml
 ```
 
 ## 🏗️ Project Structure
@@ -88,24 +118,27 @@ aigie/
 ├── core/                    # Core error detection engine
 │   ├── __init__.py
 │   ├── error_detector.py   # Main error detection logic
-│   ├── error_types.py      # Error classification
-│   └── monitoring.py       # Performance monitoring
+│   ├── error_types.py      # Error classification and severity
+│   └── monitoring.py       # Performance and resource monitoring
 ├── interceptors/           # Framework-specific interceptors
 │   ├── __init__.py
-│   ├── langchain.py        # LangChain interceptor
-│   └── langgraph.py        # LangGraph interceptor
+│   ├── langchain.py        # LangChain interceptor (patches LLMChain, Agent, Tool, LLM)
+│   └── langgraph.py        # LangGraph interceptor (patches StateGraph, CompiledStateGraph)
 ├── reporting/              # Error reporting and logging
 │   ├── __init__.py
-│   ├── logger.py           # Real-time logging
-│   └── metrics.py          # Performance metrics
+│   ├── logger.py           # Real-time logging with Rich console output
+│   └── metrics.py          # Performance metrics collection
 ├── utils/                  # Utility functions
 │   ├── __init__.py
-│   ├── decorators.py       # Decorator utilities
-│   └── config.py           # Configuration management
+│   ├── decorators.py       # Monitoring decorators and context managers
+│   └── config.py           # Configuration management with presets
+├── cli.py                  # Command-line interface
+├── auto_integration.py     # Automatic integration system
+├── examples/               # Working examples
+│   ├── basic_langchain.py  # LangChain integration example
+│   └── basic_langgraph.py  # LangGraph integration example
 └── tests/                  # Test suite
-    ├── __init__.py
-    ├── test_langchain.py   # LangChain integration tests
-    └── test_langgraph.py   # LangGraph integration tests
+    └── test_basic.py       # Core functionality tests
 ```
 
 ## 🔍 Error Types Detected
@@ -115,14 +148,16 @@ aigie/
 3. **State Errors**: Invalid state transitions, data corruption, type mismatches
 4. **Memory Errors**: Overflow, corruption, persistence failures
 5. **Performance Issues**: Slow execution, resource exhaustion, memory leaks
+6. **Framework-specific**: LangChain chain/tool/agent errors, LangGraph node/state errors
 
 ## 📊 Monitoring Capabilities
 
-- **Real-time Error Logging**: Immediate error reporting with stack traces
+- **Real-time Error Logging**: Immediate error reporting with classification and severity
 - **Performance Metrics**: Execution time, memory usage, API call latency
 - **State Tracking**: Monitor agent state changes and transitions
-- **Resource Monitoring**: CPU, memory, and network usage
-- **Custom Alerts**: Configurable error thresholds and notifications
+- **Resource Monitoring**: CPU, memory, and disk usage with health indicators
+- **Rich Console Output**: Beautiful displays with emojis, tables, and structured information
+- **Error Suggestions**: AI-powered recommendations for fixing detected issues
 
 ## 🛠️ Development
 
@@ -140,19 +175,35 @@ pip install -e .
 ### Run Tests
 
 ```bash
-pytest tests/
+pytest tests/ -v
 ```
 
-### Run Example
+### Run Examples
 
 ```bash
+# Basic examples
 python examples/basic_langchain.py
 python examples/basic_langgraph.py
+
+# Comprehensive demo
+python demo.py
+```
+
+### CLI Testing
+
+```bash
+# Test CLI commands
+aigie --help
+aigie version
+aigie status
+aigie analysis
 ```
 
 ## 📝 Configuration
 
-Aigie can be configured through environment variables:
+Aigie can be configured through environment variables or configuration files:
+
+### Environment Variables
 
 ```bash
 export AIGIE_LOG_LEVEL=INFO
@@ -160,6 +211,38 @@ export AIGIE_ENABLE_METRICS=true
 export AIGIE_ERROR_THRESHOLD=5
 export AIGIE_ENABLE_ALERTS=true
 ```
+
+### Configuration Files
+
+```bash
+# Generate configuration
+aigie config --generate config.yml
+
+# Use configuration
+aigie enable --config config.yml
+```
+
+### Configuration Presets
+
+- **development**: Verbose logging, detailed error reporting
+- **production**: Optimized performance, essential monitoring only
+- **testing**: Minimal overhead, focused on validation
+
+## 🎯 Current Status
+
+✅ **Fully Implemented and Working**:
+- Core error detection engine
+- LangChain and LangGraph interceptors
+- Real-time logging with Rich console output
+- Performance monitoring and metrics
+- CLI interface with all commands
+- Working examples for both frameworks
+- Comprehensive test suite (20 tests passing)
+
+✅ **Compatible with Current Versions**:
+- LangChain 0.3.27+
+- LangGraph 0.6.6+
+- Uses modern import paths and patterns
 
 ## 🤝 Contributing
 

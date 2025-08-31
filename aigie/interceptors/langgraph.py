@@ -24,12 +24,6 @@ class LangGraphInterceptor:
         # LangGraph components to intercept
         self.target_classes = {
             'StateGraph': ['add_node', 'add_edge', 'compile', 'set_entry_point', 'set_finish_point'],
-            'Graph': ['add_node', 'add_edge', 'compile', 'set_entry_point', 'set_finish_point'],
-            'Node': ['__call__', 'invoke', 'ainvoke'],
-            'StateNode': ['__call__', 'invoke', 'ainvoke'],
-            'Checkpointer': ['get', 'put', 'list_keys', 'delete'],
-            'MemorySaver': ['save', 'load', 'clear'],
-            'StateGraphApp': ['invoke', 'ainvoke', 'stream', 'astream'],
             'CompiledGraph': ['invoke', 'ainvoke', 'stream', 'astream'],
         }
         
@@ -75,18 +69,12 @@ class LangGraphInterceptor:
         """Patch specific LangGraph classes."""
         # Try to import and patch LangGraph classes
         try:
-            from langgraph.graph import StateGraph, Graph
-            from langgraph.graph.message import add_messages
-            from langgraph.checkpoint import BaseCheckpointer
-            from langgraph.checkpoint.memory import MemorySaver
-            from langgraph.graph import CompiledGraph
+            from langgraph.graph import StateGraph
+            from langgraph.graph.state import CompiledStateGraph
             
             classes_to_patch = {
                 'StateGraph': StateGraph,
-                'Graph': Graph,
-                'BaseCheckpointer': BaseCheckpointer,
-                'MemorySaver': MemorySaver,
-                'CompiledGraph': CompiledGraph,
+                'CompiledGraph': CompiledStateGraph,
             }
             
             for class_name, cls in classes_to_patch.items():

@@ -24,17 +24,9 @@ class LangChainInterceptor:
         # LangChain components to intercept
         self.target_classes = {
             'LLMChain': ['run', '__call__', 'acall', 'arun'],
-            'Chain': ['run', '__call__', 'acall', 'arun'],
             'Agent': ['run', '__call__', 'acall', 'arun'],
             'Tool': ['run', '__call__', 'acall', 'arun'],
             'LLM': ['__call__', 'acall', 'agenerate', 'generate'],
-            'BaseMemory': ['load_memory_variables', 'save_context', 'clear'],
-            'BaseRetriever': ['get_relevant_documents', 'aget_relevant_documents'],
-            'BaseEmbeddings': ['embed_documents', 'aembed_documents', 'embed_query', 'aembed_query'],
-            'BaseOutputParser': ['parse', 'aparse', 'parse_result'],
-            'BasePromptTemplate': ['format', 'format_prompt'],
-            'BaseChatModel': ['__call__', 'acall', 'agenerate', 'generate'],
-            'BaseLanguageModel': ['__call__', 'acall', 'agenerate', 'generate'],
         }
     
     def start_intercepting(self):
@@ -74,37 +66,28 @@ class LangChainInterceptor:
         """Patch specific LangChain classes."""
         # Try to import and patch LangChain classes
         try:
-            from langchain.chains import LLMChain, Chain
-            from langchain.agents import Agent
-            from langchain.tools import BaseTool
-            from langchain.llms.base import LLM
-            from langchain.memory import BaseMemory
-            from langchain.retrievers import BaseRetriever
-            from langchain.embeddings.base import Embeddings
-            from langchain.output_parsers.base import BaseOutputParser
-            from langchain.prompts import BasePromptTemplate
-            from langchain.chat_models.base import BaseChatModel
-            from langchain.language_models.base import BaseLanguageModel
-            
-            classes_to_patch = {
-                'LLMChain': LLMChain,
-                'Chain': Chain,
-                'Agent': Agent,
-                'Tool': BaseTool,
-                'LLM': LLM,
-                'BaseMemory': BaseMemory,
-                'BaseRetriever': BaseRetriever,
-                'BaseEmbeddings': Embeddings,
-                'BaseOutputParser': BaseOutputParser,
-                'BasePromptTemplate': BasePromptTemplate,
-                'BaseChatModel': BaseChatModel,
-                'BaseLanguageModel': BaseLanguageModel,
-            }
-            
-            for class_name, cls in classes_to_patch.items():
-                if cls and class_name in self.target_classes:
-                    self._patch_class_methods(cls, class_name)
-                    
+            # Try to import newer LangChain classes
+            try:
+                from langchain.chains import LLMChain
+                from langchain.agents import Agent
+                from langchain.tools import BaseTool
+                from langchain.llms.base import LLM
+                
+                classes_to_patch = {
+                    'LLMChain': LLMChain,
+                    'Agent': Agent,
+                    'Tool': BaseTool,
+                    'LLM': LLM,
+                }
+                
+                for class_name, cls in classes_to_patch.items():
+                    if cls and class_name in self.target_classes:
+                        self._patch_class_methods(cls, class_name)
+                        
+            except ImportError:
+                # If newer classes aren't available, just log it
+                self.logger.log_system_event("LangChain newer classes not available")
+                
         except ImportError as e:
             self.logger.log_system_event(f"LangChain not available: {e}")
     

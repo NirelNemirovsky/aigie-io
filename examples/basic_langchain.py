@@ -29,19 +29,10 @@ class MockLLM:
     def __call__(self, prompt, **kwargs):
         """Mock call method."""
         return self.invoke(prompt, **kwargs)
-
-
-class MockChain:
-    """Simple mock chain for testing."""
     
-    def __init__(self, llm, prompt):
-        self.llm = llm
-        self.prompt = prompt
-    
-    def run(self, input_text):
-        """Mock run method."""
-        formatted_prompt = self.prompt.format(topic=input_text)
-        return self.llm.invoke(formatted_prompt)
+    def stream(self, prompt, **kwargs):
+        """Mock stream method."""
+        yield self.invoke(prompt, **kwargs)
 
 
 def main():
@@ -61,16 +52,19 @@ def main():
         # Import LangChain components
         print("\n3. Importing LangChain components...")
         from langchain_core.prompts import PromptTemplate
+        from langchain_core.runnables import RunnableSequence
         
         # Create a simple chain
         print("\n4. Creating LangChain components...")
         llm = MockLLM(temperature=0.7)
         prompt = PromptTemplate.from_template("Tell me a joke about {topic}")
-        chain = MockChain(llm=llm, prompt=prompt)
+        
+        # Use modern RunnableSequence approach
+        chain = prompt | llm
         
         # Run the chain normally
         print("\n5. Running LangChain chain...")
-        result = chain.run("programming")
+        result = chain.invoke({"topic": "programming"})
         print(f"Result: {result}")
         
         # Show status after successful execution
@@ -82,8 +76,8 @@ def main():
         try:
             # This will cause an error (invalid prompt template)
             bad_prompt = PromptTemplate.from_template("Invalid template with {missing} {variables}")
-            bad_chain = MockChain(llm=llm, prompt=bad_prompt)
-            bad_chain.run("test")
+            bad_chain = bad_prompt | llm
+            bad_chain.invoke({"topic": "test"})
         except Exception as e:
             print(f"Expected error caught: {e}")
         
