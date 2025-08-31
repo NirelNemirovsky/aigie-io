@@ -16,6 +16,65 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aigie import auto_integrate, show_status, show_analysis
 
 
+class MockMessage:
+    """Simple mock message for testing."""
+    
+    def __init__(self, content, type="system"):
+        self.content = content
+        self.type = type
+
+
+class MockStateGraph:
+    """Simple mock state graph for testing."""
+    
+    def __init__(self, state_type):
+        self.state_type = state_type
+        self.nodes = {}
+        self.edges = {}
+        self.entry_point = None
+    
+    def add_node(self, name, func):
+        """Add a node to the graph."""
+        self.nodes[name] = func
+    
+    def add_edge(self, from_node, to_node):
+        """Add an edge to the graph."""
+        if from_node not in self.edges:
+            self.edges[from_node] = []
+        self.edges[from_node].append(to_node)
+    
+    def set_entry_point(self, node_name):
+        """Set the entry point of the graph."""
+        self.entry_point = node_name
+    
+    def compile(self, checkpointer=None):
+        """Compile the graph into an executable app."""
+        return MockCompiledGraph(self)
+
+
+class MockCompiledGraph:
+    """Simple mock compiled graph for testing."""
+    
+    def __init__(self, graph):
+        self.graph = graph
+    
+    def invoke(self, state):
+        """Execute the graph with the given state."""
+        current_node = self.graph.entry_point
+        
+        while current_node and current_node in self.graph.nodes:
+            # Execute the current node
+            state = self.graph.nodes[current_node](state)
+            
+            # Move to next node
+            if current_node in self.graph.edges:
+                current_node = self.graph.edges[current_node][0]
+            else:
+                current_node = None
+        
+        return state
+
+
 def main():
     """Main example function."""
     print("🚀 Starting Aigie LangGraph Example")
@@ -32,41 +91,38 @@ def main():
     try:
         # Import LangGraph components
         print("\n3. Importing LangGraph components...")
-        from langgraph.graph import StateGraph, END
-        from langgraph.checkpoint.memory import MemorySaver
         
         # Create a simple state graph
         print("\n4. Creating LangGraph components...")
         
         # Define state structure
         from typing import TypedDict, Annotated
-        from langchain_core.messages import BaseMessage
         
         class AgentState(TypedDict):
-            messages: Annotated[list[BaseMessage], "The messages in the conversation"]
+            messages: Annotated[list, "The messages in the conversation"]
             current_step: Annotated[str, "The current step in the workflow"]
         
         # Create the graph
-        workflow = StateGraph(AgentState)
+        workflow = MockStateGraph(AgentState)
         
         # Add nodes
         def start_node(state: AgentState) -> AgentState:
             """Start node that initializes the state."""
             state["current_step"] = "started"
-            state["messages"].append(BaseMessage(content="Workflow started", type="system"))
+            state["messages"].append(MockMessage("Workflow started", "system"))
             return state
         
         def process_node(state: AgentState) -> AgentState:
             """Process node that simulates some work."""
             state["current_step"] = "processing"
-            state["messages"].append(BaseMessage(content="Processing...", type="system"))
+            state["messages"].append(MockMessage("Processing...", "system"))
             time.sleep(0.1)  # Simulate work
             return state
         
         def finish_node(state: AgentState) -> AgentState:
             """Finish node that completes the workflow."""
             state["current_step"] = "finished"
-            state["messages"].append(BaseMessage(content="Workflow completed", type="system"))
+            state["messages"].append(MockMessage("Workflow completed", "system"))
             return state
         
         # Add nodes to graph
@@ -77,14 +133,13 @@ def main():
         # Add edges
         workflow.add_edge("start", "process")
         workflow.add_edge("process", "finish")
-        workflow.add_edge("finish", END)
         
         # Set entry point
         workflow.set_entry_point("start")
         
         # Compile the graph
         print("\n5. Compiling LangGraph...")
-        app = workflow.compile(checkpointer=MemorySaver())
+        app = workflow.compile()
         
         # Show status after graph creation
         print("\n6. Status after graph creation:")

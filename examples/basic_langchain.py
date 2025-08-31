@@ -16,6 +16,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from aigie import auto_integrate, show_status, show_analysis
 
 
+class MockLLM:
+    """Simple mock LLM for testing without external dependencies."""
+    
+    def __init__(self, temperature=0.7):
+        self.temperature = temperature
+    
+    def invoke(self, prompt, **kwargs):
+        """Mock invoke method."""
+        return f"Mock response to: {prompt}"
+    
+    def __call__(self, prompt, **kwargs):
+        """Mock call method."""
+        return self.invoke(prompt, **kwargs)
+
+
+class MockChain:
+    """Simple mock chain for testing."""
+    
+    def __init__(self, llm, prompt):
+        self.llm = llm
+        self.prompt = prompt
+    
+    def run(self, input_text):
+        """Mock run method."""
+        formatted_prompt = self.prompt.format(topic=input_text)
+        return self.llm.invoke(formatted_prompt)
+
+
 def main():
     """Main example function."""
     print("🚀 Starting Aigie LangChain Example")
@@ -32,15 +60,13 @@ def main():
     try:
         # Import LangChain components
         print("\n3. Importing LangChain components...")
-        from langchain.llms import OpenAI
-        from langchain.chains import LLMChain
-        from langchain.prompts import PromptTemplate
+        from langchain_core.prompts import PromptTemplate
         
         # Create a simple chain
         print("\n4. Creating LangChain components...")
-        llm = OpenAI(temperature=0.7)
+        llm = MockLLM(temperature=0.7)
         prompt = PromptTemplate.from_template("Tell me a joke about {topic}")
-        chain = LLMChain(llm=llm, prompt=prompt)
+        chain = MockChain(llm=llm, prompt=prompt)
         
         # Run the chain normally
         print("\n5. Running LangChain chain...")
@@ -56,7 +82,7 @@ def main():
         try:
             # This will cause an error (invalid prompt template)
             bad_prompt = PromptTemplate.from_template("Invalid template with {missing} {variables}")
-            bad_chain = LLMChain(llm=llm, prompt=bad_prompt)
+            bad_chain = MockChain(llm=llm, prompt=bad_prompt)
             bad_chain.run("test")
         except Exception as e:
             print(f"Expected error caught: {e}")
