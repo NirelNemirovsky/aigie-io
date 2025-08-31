@@ -1,0 +1,20 @@
+# Core dependencies
+langchain>=0.1.0
+langgraph>=0.1.0
+langchain-core>=0.1.0
+
+# Monitoring and logging
+psutil>=5.9.0
+rich>=13.0.0
+structlog>=23.0.0
+
+# Development dependencies
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.0.0
+
+# Optional: Cloud monitoring
+google-cloud-logging>=3.0.0
+google-cloud-monitoring>=2.0.0
