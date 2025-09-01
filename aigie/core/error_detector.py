@@ -19,7 +19,7 @@ from .intelligent_retry import IntelligentRetry
 
 
 class ErrorDetector:
-    """Main error detection engine for AI agent applications."""
+    """Main error detection engine for AI agent applications with real-time remediation."""
     
     def __init__(self, enable_performance_monitoring: bool = True, 
                  enable_resource_monitoring: bool = True,
@@ -60,6 +60,13 @@ class ErrorDetector:
         # Operation storage for retry
         self.operation_store: Dict[str, Dict[str, Any]] = {}
         
+        # Enhanced remediation capabilities
+        self.enable_real_time_remediation = True
+        self.enable_prompt_injection = True
+        self.operation_context_stack: List[Dict[str, Any]] = []
+        self.active_operations: Dict[str, Dict[str, Any]] = {}
+        self.remediation_cache: Dict[str, Dict[str, Any]] = {}
+        
     def add_error_handler(self, handler: Callable[[DetectedError], None]):
         """Add a custom error handler."""
         self.error_handlers.append(handler)
@@ -73,9 +80,69 @@ class ErrorDetector:
             'kwargs': kwargs,
             'context': context,
             'timestamp': datetime.now(),
-            'retry_count': 0
+            'retry_count': 0,
+            'original_prompt': self._extract_prompt_from_args(args, kwargs),
+            'operation_type': self._determine_operation_type(operation, context),
+            'execution_stack': self.operation_context_stack.copy()
         }
         logging.info(f"Stored operation {operation_id} for potential retry")
+    
+    def register_active_operation(self, operation_id: str, operation_info: Dict[str, Any]):
+        """Register an active operation for real-time monitoring."""
+        self.active_operations[operation_id] = {
+            **operation_info,
+            'start_time': datetime.now(),
+            'status': 'running',
+            'context_stack': self.operation_context_stack.copy()
+        }
+    
+    def complete_active_operation(self, operation_id: str, result: Any = None, error: Exception = None):
+        """Mark an active operation as completed."""
+        if operation_id in self.active_operations:
+            self.active_operations[operation_id].update({
+                'end_time': datetime.now(),
+                'status': 'completed' if error is None else 'failed',
+                'result': result,
+                'error': error
+            })
+    
+    def _extract_prompt_from_args(self, args: tuple, kwargs: dict) -> Optional[str]:
+        """Extract prompt/input text from operation arguments."""
+        # Common prompt parameter names
+        prompt_keys = ['prompt', 'input', 'query', 'text', 'message', 'instruction', 'content']
+        
+        # Check kwargs first
+        for key in prompt_keys:
+            if key in kwargs and isinstance(kwargs[key], str):
+                return kwargs[key]
+        
+        # Check positional args
+        for arg in args:
+            if isinstance(arg, str) and len(arg) > 10:  # Likely a prompt
+                return arg
+            elif isinstance(arg, dict):
+                for key in prompt_keys:
+                    if key in arg and isinstance(arg[key], str):
+                        return arg[key]
+        
+        return None
+    
+    def _determine_operation_type(self, operation: Callable, context: ErrorContext) -> str:
+        """Determine the type of operation being performed."""
+        op_name = getattr(operation, '__name__', str(operation))
+        component = context.component.lower()
+        method = context.method.lower()
+        
+        if 'llm' in component or 'generate' in method:
+            return 'llm_call'
+        elif 'agent' in component or 'run' in method:
+            return 'agent_execution'
+        elif 'tool' in component or 'call' in method:
+            return 'tool_call'
+        elif 'chain' in component:
+            return 'chain_execution'
+        else:
+            return 'unknown'
     
     def get_stored_operation(self, operation_id: str) -> Optional[Dict[str, Any]]:
         """Get a stored operation for retry."""
@@ -197,8 +264,8 @@ class ErrorDetector:
     
     def _attempt_automatic_retry(self, exception: Exception, context: ErrorContext, 
                                 detected_error: DetectedError):
-        """Attempt automatic retry using Gemini-enhanced context."""
-        if not self.intelligent_retry:
+        """Attempt automatic retry using Gemini-enhanced context with real-time remediation."""
+        if not self.intelligent_retry or not self.enable_real_time_remediation:
             return
         
         try:
@@ -209,16 +276,25 @@ class ErrorDetector:
                     logging.info("Error marked as non-retryable by Gemini")
                     return
             
-            # Generate remediation strategy
+            # Generate remediation strategy with prompt injection capabilities
             if self.gemini_analyzer and self.gemini_analyzer.is_available():
-                remediation = self.gemini_analyzer.generate_remediation_strategy(
-                    exception, context, context.gemini_analysis
+                # Get operation details for context-aware remediation
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                stored_operation = self.get_stored_operation(operation_id)
+                
+                if not stored_operation:
+                    logging.warning(f"No stored operation found for {operation_id}")
+                    return
+                
+                # Generate specific remediation with prompt injection
+                remediation = self.gemini_analyzer.generate_prompt_injection_remediation(
+                    exception, context, stored_operation, detected_error
                 )
                 
                 # Store remediation for potential use
                 context.remediation_strategy = remediation
                 
-                logging.info(f"Generated remediation strategy with confidence: {remediation.get('confidence', 0)}")
+                logging.info(f"Generated prompt injection remediation with confidence: {remediation.get('confidence', 0)}")
                 
                 # Check if we should attempt retry based on confidence
                 confidence = remediation.get('confidence', 0)
@@ -226,11 +302,203 @@ class ErrorDetector:
                     logging.info(f"Confidence too low for automatic retry: {confidence}")
                     return
                 
-                # Attempt retry with enhanced context
-                self._execute_enhanced_retry(exception, context, remediation)
+                # Attempt real-time remediation with prompt injection
+                return self._execute_real_time_remediation(exception, context, remediation, stored_operation)
                 
         except Exception as e:
             logging.error(f"Failed to attempt automatic retry: {e}")
+    
+    def _execute_real_time_remediation(self, exception: Exception, context: ErrorContext, 
+                                     remediation: Dict[str, Any], stored_operation: Dict[str, Any]) -> Any:
+        """Execute real-time remediation with prompt injection."""
+        try:
+            operation_type = stored_operation.get('operation_type', 'unknown')
+            original_prompt = stored_operation.get('original_prompt')
+            
+            logging.info(f"🔄 REAL-TIME REMEDIATION: Executing {operation_type} with prompt injection")
+            
+            # Generate enhanced prompt with specific error context
+            enhanced_prompt = self._generate_enhanced_prompt(
+                original_prompt, exception, context, remediation, operation_type
+            )
+            
+            # Apply remediation to operation arguments
+            enhanced_args, enhanced_kwargs = self._apply_prompt_injection(
+                stored_operation['args'], stored_operation['kwargs'], 
+                enhanced_prompt, remediation
+            )
+            
+            # Execute the operation with enhanced context
+            operation = stored_operation['operation']
+            
+            logging.info(f"🚀 EXECUTING REMEDIATED OPERATION: {operation_type}")
+            logging.info(f"📝 ORIGINAL PROMPT: {original_prompt[:100]}...")
+            logging.info(f"✨ ENHANCED PROMPT: {enhanced_prompt[:100]}...")
+            
+            # Use intelligent retry for actual execution
+            result = self.intelligent_retry.retry_with_enhanced_context(
+                operation, *enhanced_args, error_context=context, **enhanced_kwargs
+            )
+            
+            # Log successful remediation
+            logging.info(f"✅ REMEDIATION SUCCESS: {operation_type} completed successfully")
+            
+            # Cache successful remediation
+            remediation_key = f"{operation_type}_{str(exception)[:50]}"
+            self.remediation_cache[remediation_key] = {
+                'remediation': remediation,
+                'enhanced_prompt': enhanced_prompt,
+                'success': True,
+                'timestamp': datetime.now()
+            }
+            
+            return result
+            
+        except Exception as e:
+            logging.error(f"❌ REMEDIATION FAILED: {e}")
+            # Cache failed remediation
+            remediation_key = f"{operation_type}_{str(exception)[:50]}"
+            self.remediation_cache[remediation_key] = {
+                'remediation': remediation,
+                'enhanced_prompt': enhanced_prompt if 'enhanced_prompt' in locals() else None,
+                'success': False,
+                'error': str(e),
+                'timestamp': datetime.now()
+            }
+            raise
+    
+    def _generate_enhanced_prompt(self, original_prompt: Optional[str], exception: Exception, 
+                                context: ErrorContext, remediation: Dict[str, Any], 
+                                operation_type: str) -> str:
+        """Generate enhanced prompt with specific error context and remediation hints."""
+        if not original_prompt:
+            original_prompt = "Please complete the requested task."
+        
+        error_context = f"""
+ERROR CONTEXT:
+- Error Type: {type(exception).__name__}
+- Error Message: {str(exception)}
+- Operation: {operation_type}
+- Component: {context.component}
+- Method: {context.method}
+- Timestamp: {context.timestamp}
+"""
+        
+        # Get specific remediation hints from Gemini analysis
+        remediation_hints = remediation.get('prompt_injection_hints', [])
+        if remediation_hints:
+            hints_text = "\n".join([f"- {hint}" for hint in remediation_hints])
+            remediation_context = f"""
+REMEDIATION GUIDANCE:
+{hints_text}
+"""
+        else:
+            remediation_context = ""
+        
+        # Generate operation-specific guidance
+        operation_guidance = self._get_operation_specific_guidance(operation_type, exception)
+        
+        enhanced_prompt = f"""You are an AI agent that needs to complete a task. A previous attempt failed, but you have been provided with specific guidance to succeed.
+
+{error_context}
+{remediation_context}
+{operation_guidance}
+
+ORIGINAL TASK:
+{original_prompt}
+
+IMPORTANT: 
+1. Learn from the error context above
+2. Apply the remediation guidance
+3. Be more careful and specific in your approach
+4. If you encounter similar issues, try alternative approaches
+5. Provide detailed reasoning for your actions
+
+Please complete the task now with this enhanced context:"""
+        
+        return enhanced_prompt
+    
+    def _get_operation_specific_guidance(self, operation_type: str, exception: Exception) -> str:
+        """Get specific guidance based on operation type and error."""
+        error_msg = str(exception).lower()
+        
+        if operation_type == 'llm_call':
+            if 'timeout' in error_msg:
+                return "\nLLM GUIDANCE: The previous call timed out. Try to be more concise and specific in your request."
+            elif 'rate limit' in error_msg:
+                return "\nLLM GUIDANCE: Rate limit was exceeded. The system will handle retry timing automatically."
+            elif 'validation' in error_msg or 'format' in error_msg:
+                return "\nLLM GUIDANCE: There was a format issue. Ensure your response follows the expected structure."
+            else:
+                return "\nLLM GUIDANCE: Focus on providing a clear, well-structured response."
+        
+        elif operation_type == 'tool_call':
+            if 'timeout' in error_msg:
+                return "\nTOOL GUIDANCE: The tool call timed out. Try with simpler parameters or break down the request."
+            elif 'validation' in error_msg:
+                return "\nTOOL GUIDANCE: Parameter validation failed. Check input format and required parameters."
+            else:
+                return "\nTOOL GUIDANCE: Ensure you're using the tool correctly with proper parameters."
+        
+        elif operation_type == 'agent_execution':
+            if 'loop' in error_msg or 'recursion' in error_msg:
+                return "\nAGENT GUIDANCE: Avoid infinite loops. Be decisive and move toward task completion."
+            elif 'planning' in error_msg or 'reasoning' in error_msg:
+                return "\nAGENT GUIDANCE: Improve your reasoning process. Break down the problem step by step."
+            else:
+                return "\nAGENT GUIDANCE: Focus on systematic problem-solving and clear decision-making."
+        
+        else:
+            return "\nGENERAL GUIDANCE: Learn from the error and try a different approach."
+    
+    def _apply_prompt_injection(self, args: tuple, kwargs: dict, enhanced_prompt: str, 
+                              remediation: Dict[str, Any]) -> tuple:
+        """Apply prompt injection and other remediation parameters to operation arguments."""
+        enhanced_args = list(args)
+        enhanced_kwargs = kwargs.copy()
+        
+        # Apply prompt injection
+        prompt_keys = ['prompt', 'input', 'query', 'text', 'message', 'instruction', 'content']
+        
+        # First try to replace in kwargs
+        prompt_injected = False
+        for key in prompt_keys:
+            if key in enhanced_kwargs and isinstance(enhanced_kwargs[key], str):
+                enhanced_kwargs[key] = enhanced_prompt
+                prompt_injected = True
+                logging.info(f"💉 PROMPT INJECTION: Applied to kwargs['{key}']")
+                break
+        
+        # If not found in kwargs, try positional args
+        if not prompt_injected:
+            for i, arg in enumerate(enhanced_args):
+                if isinstance(arg, str) and len(arg) > 10:  # Likely a prompt
+                    enhanced_args[i] = enhanced_prompt
+                    prompt_injected = True
+                    logging.info(f"💉 PROMPT INJECTION: Applied to args[{i}]")
+                    break
+                elif isinstance(arg, dict):
+                    for key in prompt_keys:
+                        if key in arg and isinstance(arg[key], str):
+                            arg[key] = enhanced_prompt
+                            prompt_injected = True
+                            logging.info(f"💉 PROMPT INJECTION: Applied to args[{i}]['{key}']")
+                            break
+                    if prompt_injected:
+                        break
+        
+        # If still not injected, add as new parameter
+        if not prompt_injected:
+            enhanced_kwargs['enhanced_prompt'] = enhanced_prompt
+            logging.info("💉 PROMPT INJECTION: Added as 'enhanced_prompt' parameter")
+        
+        # Apply other remediation parameters
+        remediation_params = remediation.get('parameter_modifications', {})
+        for param, value in remediation_params.items():
+            enhanced_kwargs[param] = value
+            logging.info(f"🔧 PARAMETER MODIFICATION: {param} = {value}")
+        
+        return tuple(enhanced_args), enhanced_kwargs
     
     def _execute_enhanced_retry(self, exception: Exception, context: ErrorContext, 
                                remediation: Dict[str, Any]):

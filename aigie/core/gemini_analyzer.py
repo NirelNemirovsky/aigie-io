@@ -134,6 +134,42 @@ class GeminiAnalyzer:
             logging.error(f"Gemini remediation generation failed: {e}")
             return self._fallback_remediation(error, context, error_analysis)
     
+    def generate_prompt_injection_remediation(self, error: Exception, context: ErrorContext, 
+                                            stored_operation: Dict[str, Any], 
+                                            detected_error: 'DetectedError') -> Dict[str, Any]:
+        """Generate specific prompt injection remediation strategy using Gemini."""
+        if not self.is_initialized:
+            return self._fallback_prompt_injection_remediation(error, context, stored_operation)
+        
+        try:
+            # Create specialized prompt injection prompt
+            prompt = self._create_prompt_injection_prompt(error, context, stored_operation, detected_error)
+            
+            # Get Gemini analysis based on backend
+            if self.backend == 'vertex':
+                response = self.model.generate_content(prompt)
+                text = response.text
+            elif self.backend == 'api_key':
+                response = self.model.generate_content(prompt)
+                text = getattr(response, 'text', None)
+                if not text and hasattr(response, 'candidates') and response.candidates:
+                    text = response.candidates[0].text
+            else:
+                return self._fallback_prompt_injection_remediation(error, context, stored_operation)
+            
+            remediation = self._parse_prompt_injection_response(text)
+            
+            # Enhance with fallback if Gemini response is incomplete
+            if not remediation.get("prompt_injection_hints") or not remediation.get("confidence"):
+                fallback = self._fallback_prompt_injection_remediation(error, context, stored_operation)
+                remediation = {**fallback, **remediation}  # Merge, Gemini takes precedence
+            
+            return remediation
+            
+        except Exception as e:
+            logging.error(f"Gemini prompt injection remediation failed: {e}")
+            return self._fallback_prompt_injection_remediation(error, context, stored_operation)
+    
     def _create_analysis_prompt(self, error: Exception, context: ErrorContext) -> str:
         """Create a prompt for Gemini to analyze the error."""
         prompt = f"""
@@ -260,6 +296,74 @@ IMPORTANT:
 Generate a concrete remediation plan now:
 """
     
+    def _create_prompt_injection_prompt(self, error: Exception, context: ErrorContext, 
+                                       stored_operation: Dict[str, Any], detected_error: 'DetectedError') -> str:
+        """Create a specialized prompt for generating prompt injection remediation."""
+        operation_type = stored_operation.get('operation_type', 'unknown')
+        original_prompt = stored_operation.get('original_prompt', 'N/A')
+        
+        return f"""
+You are an expert AI remediation specialist focused on PROMPT INJECTION for error recovery. 
+Your task is to generate specific guidance that will be injected into the AI agent/LLM prompt to help it succeed on retry.
+
+FAILED OPERATION DETAILS:
+- Operation Type: {operation_type}
+- Error: {type(error).__name__}: {str(error)}
+- Framework: {context.framework}
+- Component: {context.component}
+- Method: {context.method}
+- Timestamp: {context.timestamp}
+- Original Prompt: {original_prompt[:200]}...
+
+ERROR ANALYSIS:
+- Severity: {detected_error.severity.value}
+- Error Type: {detected_error.error_type.value}
+- Context: {detected_error.context.framework if detected_error.context else 'unknown'}
+
+PROMPT INJECTION TASK:
+Generate SPECIFIC guidance that will be injected into the agent/LLM prompt to help it avoid the same error and succeed.
+
+Your response must include:
+1. **Specific Error Guidance**: What went wrong and how to avoid it
+2. **Operation-Specific Hints**: Tailored advice for this type of operation
+3. **Actionable Instructions**: Concrete steps the AI should take
+4. **Alternative Approaches**: Backup strategies if the primary approach fails
+5. **Confidence Level**: How confident you are this will work (0.0-1.0)
+
+RESPONSE FORMAT (JSON):
+{{
+    "prompt_injection_hints": [
+        "Specific hint 1 about what went wrong",
+        "Specific hint 2 about how to avoid the error",
+        "Specific hint 3 about alternative approaches",
+        "Specific hint 4 about validation/verification"
+    ],
+    "operation_specific_guidance": {{
+        "primary_approach": "Main strategy to try",
+        "fallback_approaches": ["Alternative 1", "Alternative 2"],
+        "validation_steps": ["Check 1", "Check 2"],
+        "error_prevention": ["Prevention step 1", "Prevention step 2"]
+    }},
+    "parameter_modifications": {{
+        "timeout": 30,
+        "retry_attempts": 3,
+        "validation_enabled": true,
+        "careful_mode": true
+    }},
+    "confidence": 0.85,
+    "reasoning": "Brief explanation of why this approach should work"
+}}
+
+IMPORTANT GUIDELINES:
+- Be SPECIFIC about what the AI should do differently
+- Focus on ACTIONABLE guidance that can be directly applied
+- Consider the specific operation type ({operation_type})
+- Provide concrete examples where relevant
+- Ensure hints are clear and unambiguous
+- Tailor advice to the specific error type: {detected_error.error_type.value}
+
+Generate the prompt injection remediation now:"""
+    
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
         """Parse Gemini's response into structured data."""
         try:
@@ -286,6 +390,43 @@ Generate a concrete remediation plan now:
     def _parse_remediation_response(self, response_text: str) -> Dict[str, Any]:
         """Parse Gemini's remediation response."""
         return self._parse_gemini_response(response_text)
+    
+    def _parse_prompt_injection_response(self, response_text: str) -> Dict[str, Any]:
+        """Parse Gemini's prompt injection remediation response."""
+        try:
+            parsed = self._parse_gemini_response(response_text)
+            
+            # Ensure required fields are present
+            if 'prompt_injection_hints' not in parsed:
+                parsed['prompt_injection_hints'] = [
+                    "Previous attempt failed, try a different approach",
+                    "Be more careful and specific in your response",
+                    "Consider alternative methods if the first approach doesn't work"
+                ]
+            
+            if 'confidence' not in parsed:
+                parsed['confidence'] = 0.7
+            
+            return parsed
+            
+        except Exception as e:
+            logging.warning(f"Failed to parse prompt injection response: {e}")
+            return {
+                "prompt_injection_hints": [
+                    "Previous attempt failed, try a different approach",
+                    "Be more careful and specific in your response",
+                    "Consider alternative methods if the first approach doesn't work"
+                ],
+                "operation_specific_guidance": {
+                    "primary_approach": "Try the original task with more care",
+                    "fallback_approaches": ["Break down the task into smaller steps"],
+                    "validation_steps": ["Verify your approach before proceeding"],
+                    "error_prevention": ["Double-check your work"]
+                },
+                "parameter_modifications": {},
+                "confidence": 0.6,
+                "reasoning": "Fallback guidance due to parsing error"
+            }
     
     def _parse_text_response(self, response_text: str) -> Dict[str, Any]:
         """Parse text response when JSON parsing fails."""
@@ -506,6 +647,143 @@ Generate a concrete remediation plan now:
                 "confidence": 0.6,
                 "fix_description": "Generic retry with exponential backoff"
             }
+    
+    def _fallback_prompt_injection_remediation(self, error: Exception, context: ErrorContext, 
+                                             stored_operation: Dict[str, Any]) -> Dict[str, Any]:
+        """Fallback prompt injection remediation when Gemini is not available."""
+        operation_type = stored_operation.get('operation_type', 'unknown')
+        error_message = str(error).lower()
+        
+        # Generate operation-specific guidance
+        if operation_type == 'llm_call':
+            if 'timeout' in error_message:
+                return {
+                    "prompt_injection_hints": [
+                        "The previous LLM call timed out - be more concise in your request",
+                        "Focus on the most important aspects of the task",
+                        "Avoid overly complex or lengthy responses",
+                        "Get straight to the point with clear, direct language"
+                    ],
+                    "operation_specific_guidance": {
+                        "primary_approach": "Provide a concise, focused response",
+                        "fallback_approaches": ["Break into smaller sub-tasks", "Use bullet points for clarity"],
+                        "validation_steps": ["Check response length", "Ensure clarity"],
+                        "error_prevention": ["Keep responses under 500 words", "Use clear structure"]
+                    },
+                    "parameter_modifications": {
+                        "max_tokens": 500,
+                        "temperature": 0.3
+                    },
+                    "confidence": 0.8,
+                    "reasoning": "Timeout suggests response was too complex or lengthy"
+                }
+            elif 'validation' in error_message or 'format' in error_message:
+                return {
+                    "prompt_injection_hints": [
+                        "The previous response had format issues - follow the expected structure exactly",
+                        "Pay careful attention to the required output format",
+                        "Validate your response against the requirements before finalizing",
+                        "Use proper formatting and structure as specified"
+                    ],
+                    "operation_specific_guidance": {
+                        "primary_approach": "Follow the exact format requirements",
+                        "fallback_approaches": ["Use templates", "Check examples"],
+                        "validation_steps": ["Verify format", "Check structure"],
+                        "error_prevention": ["Double-check format requirements", "Use consistent structure"]
+                    },
+                    "parameter_modifications": {
+                        "validation_enabled": True,
+                        "format_checking": True
+                    },
+                    "confidence": 0.9,
+                    "reasoning": "Format errors can be avoided with careful attention to structure"
+                }
+        
+        elif operation_type == 'tool_call':
+            if 'timeout' in error_message:
+                return {
+                    "prompt_injection_hints": [
+                        "The previous tool call timed out - use simpler parameters",
+                        "Break down complex requests into smaller parts",
+                        "Verify all required parameters are provided correctly",
+                        "Consider using default values for optional parameters"
+                    ],
+                    "operation_specific_guidance": {
+                        "primary_approach": "Simplify the tool call parameters",
+                        "fallback_approaches": ["Use minimal required parameters", "Call tool multiple times"],
+                        "validation_steps": ["Check parameter validity", "Verify tool requirements"],
+                        "error_prevention": ["Use conservative parameter values", "Test with simple inputs first"]
+                    },
+                    "parameter_modifications": {
+                        "timeout": 30,
+                        "batch_size": 1
+                    },
+                    "confidence": 0.8,
+                    "reasoning": "Tool timeouts often caused by complex parameters"
+                }
+            elif 'validation' in error_message:
+                return {
+                    "prompt_injection_hints": [
+                        "Parameter validation failed - check input format and types",
+                        "Ensure all required parameters are provided",
+                        "Verify parameter values are within acceptable ranges",
+                        "Use proper data types for each parameter"
+                    ],
+                    "operation_specific_guidance": {
+                        "primary_approach": "Carefully validate all parameters before calling",
+                        "fallback_approaches": ["Use default values", "Check tool documentation"],
+                        "validation_steps": ["Verify parameter types", "Check required fields"],
+                        "error_prevention": ["Always validate inputs", "Use type checking"]
+                    },
+                    "parameter_modifications": {
+                        "validate_input": True,
+                        "strict_typing": True
+                    },
+                    "confidence": 0.9,
+                    "reasoning": "Parameter validation is straightforward to fix"
+                }
+        
+        elif operation_type == 'agent_execution':
+            if 'loop' in error_message or 'recursion' in error_message:
+                return {
+                    "prompt_injection_hints": [
+                        "The previous execution got stuck in a loop - be more decisive",
+                        "Make clear progress toward the goal with each step",
+                        "Avoid repeating the same actions or reasoning",
+                        "Set clear stopping conditions and check them regularly"
+                    ],
+                    "operation_specific_guidance": {
+                        "primary_approach": "Make decisive progress toward completion",
+                        "fallback_approaches": ["Break task into distinct steps", "Set explicit goals"],
+                        "validation_steps": ["Check for progress", "Avoid repetition"],
+                        "error_prevention": ["Set clear stopping conditions", "Track progress explicitly"]
+                    },
+                    "parameter_modifications": {
+                        "max_iterations": 10,
+                        "progress_tracking": True
+                    },
+                    "confidence": 0.8,
+                    "reasoning": "Loop detection suggests need for better decision-making"
+                }
+        
+        # Default fallback for any operation type
+        return {
+            "prompt_injection_hints": [
+                f"The previous {operation_type} operation failed - try a different approach",
+                "Be more careful and systematic in your execution",
+                "Consider what might have caused the failure and avoid it",
+                "Take your time to ensure accuracy and completeness"
+            ],
+            "operation_specific_guidance": {
+                "primary_approach": "Retry with more careful execution",
+                "fallback_approaches": ["Break down the task", "Use simpler approach"],
+                "validation_steps": ["Double-check your work", "Verify requirements"],
+                "error_prevention": ["Be more systematic", "Check for common issues"]
+            },
+            "parameter_modifications": {},
+            "confidence": 0.7,
+            "reasoning": f"General guidance for {operation_type} retry"
+        }
     
     def is_available(self) -> bool:
         """Check if Gemini is available and initialized."""
