@@ -125,6 +125,12 @@ class LangGraphInterceptor:
                 state=self._extract_state_data(self_instance, method_name)
             )
             
+            # Store operation for potential retry
+            operation_id = f"{context.framework}_{context.component}_{context.method}"
+            self.error_detector.store_operation_for_retry(
+                operation_id, original_method, (self_instance,) + args, kwargs, context
+            )
+            
             # Monitor execution
             with self.error_detector.monitor_execution(
                 framework="langgraph",
@@ -160,6 +166,12 @@ class LangGraphInterceptor:
                 method=method_name,
                 input_data=self._extract_input_data(args, kwargs, method_name),
                 state=self._extract_state_data(self_instance, method_name)
+            )
+            
+            # Store operation for potential retry
+            operation_id = f"{context.framework}_{context.component}_{context.method}"
+            self.error_detector.store_operation_for_retry(
+                operation_id, original_method, (self_instance,) + args, kwargs, context
             )
             
             # Monitor execution

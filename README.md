@@ -37,6 +37,8 @@ Enable developers to build more reliable AI agents by providing real-time visibi
 
 - **Zero-Code Integration**: Automatically detects and wraps LangChain/LangGraph applications
 - **Real-time Error Detection**: Immediate error reporting with classification and severity assessment
+- **🤖 Gemini-Powered Error Analysis**: AI-powered error classification and intelligent remediation
+- **🔄 Intelligent Retry System**: Automatic retry with enhanced context from Gemini
 - **Comprehensive Monitoring**: Covers execution, API, state, and memory errors
 - **Performance Insights**: Track execution time, memory usage, and resource consumption
 - **Rich Console Output**: Beautiful, informative displays with emojis and structured information
@@ -49,7 +51,49 @@ Enable developers to build more reliable AI agents by providing real-time visibi
 pip install aigie
 ```
 
+## 🤖 Gemini Integration Options
+
+Aigie supports **two official ways to use Gemini**:
+
+### 1. Vertex AI (Recommended for production/cloud)
+- Requires a Google Cloud project with Vertex AI enabled
+- Uses `GOOGLE_CLOUD_PROJECT` and gcloud authentication
+- Supports quotas, IAM, VPC, monitoring, and regional control
+
+### 2. Gemini API Key (Best for local/dev/quickstart)
+- Requires a Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- No GCP project or gcloud needed
+- Just set `GEMINI_API_KEY` environment variable
+
+**Aigie will auto-detect which method to use:**
+- If `GOOGLE_CLOUD_PROJECT` is set, uses Vertex AI
+- Else if `GEMINI_API_KEY` is set, uses API key
+- Otherwise, Gemini features are disabled
+
+### Install Gemini dependencies
+
+```bash
+pip install google-cloud-aiplatform vertexai google-generativeai
+```
+
 ## 🔧 Quick Start
+
+### Gemini Setup (Choose one)
+
+#### Option 1: Vertex AI (Cloud/Production)
+```bash
+export GOOGLE_CLOUD_PROJECT=your-project-id
+# Authenticate with Google Cloud
+gcloud auth application-default login
+# Enable Vertex AI API
+gcloud services enable aiplatform.googleapis.com
+```
+
+#### Option 2: Gemini API Key (Local/Dev)
+```bash
+export GEMINI_API_KEY=your-gemini-api-key
+# Get your key from https://aistudio.google.com/app/apikey
+```
 
 ### Basic Usage (Zero Code Changes)
 
@@ -84,6 +128,33 @@ app = graph.compile()
 result = app.invoke({"input": "Hello"})
 ```
 
+### 🤖 Gemini-Powered Error Analysis
+
+```python
+# Aigie automatically uses Gemini to analyze errors
+# No additional code needed - just set GOOGLE_CLOUD_PROJECT
+
+# When an error occurs, Aigie will:
+# 1. Analyze the error with Gemini
+# 2. Classify error type and severity
+# 3. Generate remediation strategies
+# 4. Provide enhanced context for retries
+```
+
+### 🔄 Intelligent Retry with Enhanced Context
+
+```python
+from aigie.core.intelligent_retry import intelligent_retry
+
+@intelligent_retry(max_retries=3)
+def my_function(input_data):
+    # If this fails, Aigie will:
+    # 1. Analyze the error with Gemini
+    # 2. Generate enhanced retry context
+    # 3. Automatically retry with better parameters
+    return process_data(input_data)
+```
+
 ### Manual Monitoring with Decorators
 
 ```python
@@ -109,6 +180,11 @@ aigie analysis
 
 # Generate configuration
 aigie config --generate config.yml
+
+# 🤖 Gemini Integration
+aigie gemini --setup your-project-id    # Setup Gemini integration
+aigie gemini --status                   # Show Gemini status
+aigie gemini --test                     # Test Gemini connection
 ```
 
 ## 🏗️ Project Structure
@@ -117,9 +193,11 @@ aigie config --generate config.yml
 aigie/
 ├── core/                    # Core error detection engine
 │   ├── __init__.py
-│   ├── error_detector.py   # Main error detection logic
+│   ├── error_detector.py   # Main error detection logic with Gemini integration
 │   ├── error_types.py      # Error classification and severity
-│   └── monitoring.py       # Performance and resource monitoring
+│   ├── monitoring.py       # Performance and resource monitoring
+│   ├── gemini_analyzer.py  # 🤖 Gemini-powered error analysis and remediation
+│   └── intelligent_retry.py # 🔄 Intelligent retry system with enhanced context
 ├── interceptors/           # Framework-specific interceptors
 │   ├── __init__.py
 │   ├── langchain.py        # LangChain interceptor (patches LLMChain, Agent, Tool, LLM)
@@ -150,6 +228,15 @@ aigie/
 5. **Performance Issues**: Slow execution, resource exhaustion, memory leaks
 6. **Framework-specific**: LangChain chain/tool/agent errors, LangGraph node/state errors
 
+### 🤖 Gemini-Enhanced Error Detection
+
+- **Intelligent Error Classification**: AI-powered categorization with confidence scoring
+- **Context-Aware Analysis**: Deep understanding of error context and relationships
+- **Smart Severity Assessment**: Intelligent determination of error impact and urgency
+- **Remediation Strategy Generation**: AI-generated solutions and retry approaches
+- **Pattern Recognition**: Identification of recurring error patterns and root causes
+- **Enhanced Error Context**: Rich metadata including execution state, input data, and performance metrics
+
 ## 📊 Monitoring Capabilities
 
 - **Real-time Error Logging**: Immediate error reporting with classification and severity
@@ -158,6 +245,14 @@ aigie/
 - **Resource Monitoring**: CPU, memory, and disk usage with health indicators
 - **Rich Console Output**: Beautiful displays with emojis, tables, and structured information
 - **Error Suggestions**: AI-powered recommendations for fixing detected issues
+
+### 🤖 Gemini-Enhanced Monitoring
+
+- **AI-Powered Error Classification**: Intelligent categorization of errors by type and severity
+- **Smart Remediation Suggestions**: AI-generated strategies for fixing issues
+- **Enhanced Context Analysis**: Deep understanding of error context and root causes
+- **Intelligent Retry Logic**: Automatic retry with improved parameters and context
+- **Performance Pattern Recognition**: AI insights into performance bottlenecks and optimizations
 
 ## 🛠️ Development
 
@@ -181,13 +276,22 @@ pytest tests/ -v
 ### Run Examples
 
 ```bash
-# Basic examples
-python examples/basic_langchain.py
-python examples/basic_langgraph.py
+# Enhanced examples with Gemini integration
+export GOOGLE_CLOUD_PROJECT=your-project-id  # Set up Gemini (one-time)
+
+# Run enhanced examples
+python examples/basic_langchain.py    # Real Gemini API calls through LangChain
+python examples/basic_langgraph.py    # AI-enhanced nodes with intelligent retry
 
 # Comprehensive demo
 python demo.py
 ```
+
+**New Gemini Features:**
+- 🤖 **Real AI Integration**: Uses actual Gemini models instead of mocks
+- 🔍 **AI-Powered Error Analysis**: Intelligent error classification and remediation
+- 🔄 **Intelligent Retry**: Automatic retry with enhanced context from Gemini
+- 📊 **Enhanced Monitoring**: AI insights for performance and error patterns
 
 ### CLI Testing
 
@@ -197,6 +301,11 @@ aigie --help
 aigie version
 aigie status
 aigie analysis
+
+# Test Gemini integration
+aigie gemini --setup your-project-id    # Setup Gemini
+aigie gemini --status                   # Show Gemini status
+aigie gemini --test                     # Test Gemini connection
 ```
 
 ## 📝 Configuration
@@ -231,18 +340,25 @@ aigie enable --config config.yml
 ## 🎯 Current Status
 
 ✅ **Fully Implemented and Working**:
-- Core error detection engine
+- Core error detection engine with Gemini integration
 - LangChain and LangGraph interceptors
 - Real-time logging with Rich console output
 - Performance monitoring and metrics
-- CLI interface with all commands
-- Working examples for both frameworks
+- CLI interface with all commands including Gemini setup
+- Working examples for both frameworks with real AI integration
 - Comprehensive test suite (20 tests passing)
+
+✅ **New Gemini-Powered Features**:
+- 🤖 **AI-Powered Error Analysis**: Intelligent error classification and remediation
+- 🔄 **Intelligent Retry System**: Automatic retry with enhanced context
+- 🧠 **Real AI Integration**: Uses actual Gemini models instead of mocks
+- 📊 **Enhanced Monitoring**: AI insights for performance and error patterns
 
 ✅ **Compatible with Current Versions**:
 - LangChain 0.3.27+
 - LangGraph 0.6.6+
 - Uses modern import paths and patterns
+- Google Cloud Vertex AI integration
 
 ## 🤝 Contributing
 

@@ -21,7 +21,10 @@ class AigieAutoIntegrator:
         self.config = config or AigieConfig()
         self.error_detector = ErrorDetector(
             enable_performance_monitoring=self.config.enable_performance_monitoring,
-            enable_resource_monitoring=self.config.enable_resource_monitoring
+            enable_resource_monitoring=self.config.enable_resource_monitoring,
+            enable_gemini_analysis=self.config.enable_gemini_analysis,
+            gemini_project_id=self.config.gemini_project_id,
+            gemini_location=self.config.gemini_location
         )
         
         # Initialize logger based on environment
@@ -78,6 +81,10 @@ class AigieAutoIntegrator:
             # Display initial status
             self._display_integration_status()
             
+            # Display Gemini status if enabled
+            if self.config.enable_gemini_analysis:
+                self._display_gemini_status()
+                
         except Exception as e:
             self.logger.log_system_event(f"Failed to auto-integrate Aigie: {e}")
             raise
@@ -121,6 +128,24 @@ class AigieAutoIntegrator:
         
         if lg_status['intercepted_classes']:
             self.logger.console.print(f"  LangGraph Classes: {', '.join(lg_status['intercepted_classes'])}")
+    
+    def _display_gemini_status(self):
+        """Display Gemini integration status."""
+        if not hasattr(self.logger, 'console'):
+            return
+        
+        gemini_status = self.error_detector.get_gemini_status()
+        
+        if gemini_status.get('enabled', False):
+            self.logger.console.print("🤖 Gemini Status:", style="bold green")
+            self.logger.console.print(f"  Project: {gemini_status.get('project_id', 'N/A')}")
+            self.logger.console.print(f"  Location: {gemini_status.get('location', 'N/A')}")
+            self.logger.console.print(f"  Model: {'✅ Loaded' if gemini_status.get('model_loaded') else '❌ Not Loaded'}")
+        else:
+            self.logger.console.print("🤖 Gemini Status:", style="bold yellow")
+            self.logger.console.print(f"  Status: {'❌ Disabled' if not gemini_status.get('enabled') else '⚠️  Not Available'}")
+            if gemini_status.get('reason'):
+                self.logger.console.print(f"  Reason: {gemini_status['reason']}")
     
     def get_integration_status(self) -> Dict[str, Any]:
         """Get comprehensive integration status."""

@@ -18,3 +18,7 @@ mypy>=1.0.0
 # Optional: Cloud monitoring
 google-cloud-logging>=3.0.0
 google-cloud-monitoring>=2.0.0
+
+# Gemini integration
+google-cloud-aiplatform>=1.38.0
+vertexai>=1.38.0

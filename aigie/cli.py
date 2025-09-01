@@ -52,6 +52,12 @@ Examples:
     enable_parser.add_argument('--enable-file', action='store_true', help='Enable file logging')
     enable_parser.add_argument('--log-file', type=str, help='Log file path')
     
+    # Gemini options
+    enable_parser.add_argument('--gemini-project', type=str, help='Google Cloud project ID for Gemini')
+    enable_parser.add_argument('--gemini-location', type=str, default='us-central1', help='Gemini location')
+    enable_parser.add_argument('--enable-gemini', action='store_true', help='Enable Gemini-powered error analysis')
+    enable_parser.add_argument('--disable-gemini', action='store_true', help='Disable Gemini-powered error analysis')
+    
     # Disable command
     subparsers.add_parser('disable', help='Disable Aigie monitoring')
     
@@ -70,6 +76,12 @@ Examples:
     config_parser.add_argument('--generate', type=str, help='Generate configuration file')
     config_parser.add_argument('--show', action='store_true', help='Show current configuration')
     config_parser.add_argument('--validate', type=str, help='Validate configuration file')
+    
+    # Gemini command
+    gemini_parser = subparsers.add_parser('gemini', help='Gemini integration management')
+    gemini_parser.add_argument('--setup', type=str, help='Setup Gemini with project ID')
+    gemini_parser.add_argument('--status', action='store_true', help='Show Gemini status')
+    gemini_parser.add_argument('--test', action='store_true', help='Test Gemini connection')
     
     # Version command
     subparsers.add_parser('version', help='Show version information')
@@ -91,6 +103,8 @@ Examples:
             return handle_analysis(args)
         elif args.command == 'config':
             return handle_config(args)
+        elif args.command == 'gemini':
+            return handle_gemini(args)
         elif args.command == 'version':
             return handle_version(args)
         else:
@@ -273,6 +287,19 @@ def handle_config(args) -> int:
         return 1
 
 
+def handle_gemini(args) -> int:
+    """Handle the Gemini command."""
+    if args.setup:
+        return setup_gemini(args.setup)
+    elif args.status:
+        return show_gemini_status()
+    elif args.test:
+        return test_gemini_connection()
+    else:
+        print("Please specify an action: --setup, --status, or --test")
+        return 1
+
+
 def handle_version(args) -> int:
     """Handle the version command."""
     try:
@@ -370,6 +397,134 @@ def validate_config_file(file_path: str) -> int:
         return 0
     except Exception as e:
         print(f"❌ Configuration file is invalid: {e}")
+        return 1
+
+
+def setup_gemini(project_id: str) -> int:
+    """Setup Gemini integration with project ID."""
+    try:
+        print(f"🚀 Setting up Gemini integration for project: {project_id}")
+        
+        # Check if gcloud is available
+        import subprocess
+        try:
+            result = subprocess.run(['gcloud', 'auth', 'list'], capture_output=True, text=True)
+            if result.returncode != 0:
+                print("❌ Google Cloud SDK not available or not authenticated")
+                print("Please install and authenticate with: gcloud auth login")
+                return 1
+        except FileNotFoundError:
+            print("❌ Google Cloud SDK not found")
+            print("Please install Google Cloud SDK first")
+            return 1
+        
+        # Set project
+        try:
+            result = subprocess.run(['gcloud', 'config', 'set', 'project', project_id], 
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"❌ Failed to set project: {result.stderr}")
+                return 1
+            print(f"✅ Project set to: {project_id}")
+        except Exception as e:
+            print(f"❌ Failed to set project: {e}")
+            return 1
+        
+        # Enable Vertex AI API
+        try:
+            print("🔧 Enabling Vertex AI API...")
+            result = subprocess.run(['gcloud', 'services', 'enable', 'aiplatform.googleapis.com'], 
+                                  capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"⚠️  Warning: Failed to enable Vertex AI API: {result.stderr}")
+                print("You may need to enable it manually in the Google Cloud Console")
+            else:
+                print("✅ Vertex AI API enabled")
+        except Exception as e:
+            print(f"⚠️  Warning: Failed to enable Vertex AI API: {e}")
+        
+        # Create configuration
+        config = AigieConfig()
+        config.gemini_project_id = project_id
+        config.enable_gemini_analysis = True
+        
+        # Save configuration
+        config.save_to_file("aigie_gemini_config.json")
+        print("✅ Gemini configuration saved to aigie_gemini_config.json")
+        
+        print("\n📋 Next steps:")
+        print("1. Use this config file: aigie enable --config-file aigie_gemini_config.json")
+        print("2. Or set environment variables:")
+        print(f"   export GOOGLE_CLOUD_PROJECT={project_id}")
+        print("   export AIGIE_ENABLE_GEMINI=true")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"❌ Failed to setup Gemini: {e}")
+        return 1
+
+
+def show_gemini_status() -> int:
+    """Show Gemini integration status."""
+    try:
+        integrator = get_status()
+        if not integrator:
+            print("❌ Aigie monitoring is not enabled")
+            return 1
+        
+        gemini_status = integrator.get('system_health', {}).get('gemini_status', {})
+        if gemini_status:
+            print("🤖 Gemini Integration Status:")
+            print(f"  Enabled: {'Yes' if gemini_status.get('enabled') else 'No'}")
+            print(f"  Project ID: {gemini_status.get('project_id', 'N/A')}")
+            print(f"  Location: {gemini_status.get('location', 'N/A')}")
+            print(f"  Model Loaded: {'Yes' if gemini_status.get('model_loaded') else 'No'}")
+            
+            if not gemini_status.get('enabled'):
+                print(f"  Reason: {gemini_status.get('reason', 'Unknown')}")
+        else:
+            print("🤖 Gemini integration not available")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"❌ Failed to show Gemini status: {e}")
+        return 1
+
+
+def test_gemini_connection() -> int:
+    """Test Gemini connection."""
+    try:
+        print("🧪 Testing Gemini connection...")
+        
+        # Try to create a Gemini analyzer
+        from .core.gemini_analyzer import GeminiAnalyzer
+        
+        # Get project ID from environment or config
+        project_id = os.getenv('GOOGLE_CLOUD_PROJECT')
+        if not project_id:
+            print("❌ No project ID found. Set GOOGLE_CLOUD_PROJECT environment variable")
+            return 1
+        
+        analyzer = GeminiAnalyzer(project_id)
+        
+        if analyzer.is_available():
+            print("✅ Gemini connection successful!")
+            print(f"  Project: {project_id}")
+            print(f"  Location: {analyzer.location}")
+            print(f"  Model: Available")
+        else:
+            print("❌ Gemini connection failed")
+            print("Please check:")
+            print("1. Project ID is correct")
+            print("2. Authentication is set up: gcloud auth application-default login")
+            print("3. Vertex AI API is enabled")
+        
+        return 0
+        
+    except Exception as e:
+        print(f"❌ Failed to test Gemini connection: {e}")
         return 1
 
 

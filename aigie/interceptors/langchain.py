@@ -131,6 +131,12 @@ class LangChainInterceptor:
                 input_data=self._extract_input_data(args, kwargs, method_name)
             )
             
+            # Store operation for potential retry
+            operation_id = f"{context.framework}_{context.component}_{context.method}"
+            self.error_detector.store_operation_for_retry(
+                operation_id, original_method, (self_instance,) + args, kwargs, context
+            )
+            
             # Monitor execution
             with self.error_detector.monitor_execution(
                 framework="langchain",
@@ -159,6 +165,12 @@ class LangChainInterceptor:
                 component=class_name,
                 method=method_name,
                 input_data=self._extract_input_data(args, kwargs, method_name)
+            )
+            
+            # Store operation for potential retry
+            operation_id = f"{context.framework}_{context.component}_{context.method}"
+            self.error_detector.store_operation_for_retry(
+                operation_id, original_method, (self_instance,) + args, kwargs, context
             )
             
             # Monitor execution

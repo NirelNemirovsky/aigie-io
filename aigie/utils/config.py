@@ -45,6 +45,18 @@ class AigieConfig:
     cloud_project_id: Optional[str] = None
     cloud_location: Optional[str] = None
     
+    # Gemini integration settings
+    enable_gemini_analysis: bool = True
+    gemini_project_id: Optional[str] = None
+    gemini_location: str = "us-central1"
+    gemini_api_key: Optional[str] = None
+    
+    # Retry settings
+    enable_automatic_retry: bool = True
+    max_retries: int = 3
+    retry_delay: float = 1.0
+    retry_confidence_threshold: float = 0.7
+    
     # Advanced settings
     max_error_history: int = 1000
     max_performance_history: int = 1000
@@ -196,6 +208,41 @@ class AigieConfig:
         if os.getenv("AIGIE_CLOUD_LOCATION"):
             config.cloud_location = os.getenv("AIGIE_CLOUD_LOCATION")
         
+        # Gemini integration settings
+        if os.getenv("AIGIE_ENABLE_GEMINI"):
+            config.enable_gemini_analysis = os.getenv("AIGIE_ENABLE_GEMINI", "true").lower() == "true"
+        
+        if os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("AIGIE_GEMINI_PROJECT_ID"):
+            config.gemini_project_id = os.getenv("GOOGLE_CLOUD_PROJECT") or os.getenv("AIGIE_GEMINI_PROJECT_ID")
+        
+        if os.getenv("AIGIE_GEMINI_LOCATION"):
+            config.gemini_location = os.getenv("AIGIE_GEMINI_LOCATION", "us-central1")
+        
+        if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("AIGIE_GEMINI_API_KEY"):
+            config.gemini_api_key = os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("AIGIE_GEMINI_API_KEY")
+        
+        # Retry settings
+        if os.getenv("AIGIE_ENABLE_RETRY"):
+            config.enable_automatic_retry = os.getenv("AIGIE_ENABLE_RETRY", "true").lower() == "true"
+        
+        if os.getenv("AIGIE_MAX_RETRIES"):
+            try:
+                config.max_retries = int(os.getenv("AIGIE_MAX_RETRIES", "3"))
+            except ValueError:
+                pass
+        
+        if os.getenv("AIGIE_RETRY_DELAY"):
+            try:
+                config.retry_delay = float(os.getenv("AIGIE_RETRY_DELAY", "1.0"))
+            except ValueError:
+                pass
+        
+        if os.getenv("AIGIE_RETRY_CONFIDENCE"):
+            try:
+                config.retry_confidence_threshold = float(os.getenv("AIGIE_RETRY_CONFIDENCE", "0.7"))
+            except ValueError:
+                pass
+        
         # Advanced settings
         if os.getenv("AIGIE_MAX_ERROR_HISTORY"):
             try:
@@ -269,6 +316,13 @@ class AigieConfig:
             "enable_cloud_logging": self.enable_cloud_logging,
             "cloud_project_id": self.cloud_project_id,
             "cloud_location": self.cloud_location,
+            "enable_gemini_analysis": self.enable_gemini_analysis,
+            "gemini_project_id": self.gemini_project_id,
+            "gemini_location": self.gemini_location,
+            "enable_automatic_retry": self.enable_automatic_retry,
+            "max_retries": self.max_retries,
+            "retry_delay": self.retry_delay,
+            "retry_confidence_threshold": self.retry_confidence_threshold,
             "max_error_history": self.max_error_history,
             "max_performance_history": self.max_performance_history,
             "cleanup_interval_minutes": self.cleanup_interval_minutes
