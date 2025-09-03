@@ -1,22 +1,34 @@
 #!/usr/bin/env python3
 """
-AI Research Assistant with Aigie Error Detection and Monitoring
+Comprehensive AI Research Assistant with Aigie Error Detection and Monitoring
 
-This example demonstrates aigie's capabilities with a real-world AI research assistant that:
-1. Uses multiple tools (web search, document analysis, code generation)
-2. Implements LangGraph orchestration for complex workflows
-3. Triggers various error conditions that aigie can detect and handle
-4. Shows real-time monitoring and intelligent retry capabilities
+This example demonstrates aigie's capabilities with a comprehensive AI research assistant that:
+1. Uses multiple sophisticated tools (web search, document analysis, code generation)
+2. Implements complex LangGraph orchestration for real-world workflows
+3. Triggers extensive error conditions that aigie can detect and handle intelligently
+4. Shows real-time monitoring, performance tracking, and intelligent retry capabilities
 
 The agent helps researchers by:
-- Searching for relevant papers and information
-- Analyzing documents and extracting key insights
-- Generating code snippets for data analysis
-- Managing research workflows with error handling
+- Searching for relevant papers and information with comprehensive error simulation
+- Analyzing documents and extracting key insights with detailed processing
+- Generating code snippets for data analysis in multiple programming languages
+- Managing complex research workflows with state management and error handling
+
+Key Features:
+- Comprehensive error simulation to test aigie's detection capabilities
+- Detailed tool implementations with realistic processing patterns
+- Complex workflow orchestration with state management
+- Extensive aigie integration showing monitoring of all execution steps
+- Real-world complexity demonstrating production-ready patterns
+- Both modern and legacy patterns for educational comparison
+
+This example serves as the main demonstration of aigie's capabilities in a realistic,
+complex workflow with comprehensive error conditions and monitoring integration.
 
 Requirements:
-- Google Cloud project with Vertex AI enabled (set GOOGLE_CLOUD_PROJECT)
-- Or GEMINI_API_KEY environment variable
+- LangChain and LangGraph (compatible with multiple versions)
+- Model provider API key (OPENAI_API_KEY, ANTHROPIC_API_KEY, or GOOGLE_API_KEY)  
+- GEMINI_API_KEY for enhanced error analysis (optional but recommended)
 - Internet connection for web search functionality
 """
 
@@ -811,17 +823,114 @@ async def main():
                 print(f"\n❌ Workflow execution failed: {e}")
                 logger.error(f"Workflow execution failed: {e}")
         
-        # Show aigie status and analysis
-        print("\n📊 Aigie Monitoring Results:")
-        print("-" * 30)
+        # Show comprehensive aigie monitoring results
+        print("\n📊 Comprehensive Aigie Monitoring Analysis:")
+        print("=" * 60)
         
-        # Display aigie status
-        show_status()
+        # LangChain interceptor detailed status
+        lc_status = langchain_interceptor.get_interception_status()
+        print(f"\n🔗 LangChain Interceptor Status:")
+        print(f"   • Active: {lc_status['is_intercepting']}")
+        print(f"   • Intercepted Classes: {len(lc_status['intercepted_classes'])}")
+        print(f"   • Patched Methods: {len(lc_status['patched_methods'])}")
+        print(f"   • Target Classes: {lc_status['target_classes']}")
         
-        # Show error analysis if any errors occurred
+        if lc_status['intercepted_classes']:
+            print(f"   • Monitored Components: {list(lc_status['intercepted_classes'])}")
+        
+        # LangGraph interceptor comprehensive status
+        lg_status = langgraph_interceptor.get_interception_status()
+        print(f"\n🔀 LangGraph Interceptor Status:")
+        print(f"   • Active: {lg_status['is_intercepting']}")
+        print(f"   • Tracked Graphs: {lg_status['tracked_graphs']}")
+        print(f"   • Streaming Sessions: {lg_status['streaming_sessions']}")
+        print(f"   • Active Streams: {lg_status['active_streams']}")
+        print(f"   • Event History: {lg_status['event_history_size']}")
+        print(f"   • Human Interactions: {lg_status['human_interactions']}")
+        print(f"   • Checkpoint Operations: {lg_status['checkpoint_operations']}")
+        
+        # Show streaming analysis if available
+        if lg_status['streaming_sessions'] > 0:
+            streaming_analysis = langgraph_interceptor.get_streaming_analysis()
+            print(f"\n📡 Streaming Event Analysis:")
+            print(f"   • Total Sessions: {streaming_analysis['total_sessions']}")
+            print(f"   • Completed Sessions: {streaming_analysis['completed_sessions']}")
+            print(f"   • Error Sessions: {streaming_analysis['error_sessions']}")
+            print(f"   • Total Events Processed: {streaming_analysis['total_events']}")
+            
+            if streaming_analysis.get('recent_event_types'):
+                print(f"   • Event Types Detected: {streaming_analysis['recent_event_types']}")
+        
+        # Show checkpoint analysis if available
+        if lg_status['checkpoint_operations'] > 0:
+            checkpoint_analysis = langgraph_interceptor.get_checkpoint_analysis()
+            print(f"\n💾 Checkpoint Operation Analysis:")
+            print(f"   • Total Operations: {checkpoint_analysis['total_operations']}")
+            print(f"   • Success Rate: {checkpoint_analysis['success_rate']:.1f}%")
+            print(f"   • Operation Types: {checkpoint_analysis['operation_types']}")
+        
+        # Show human interaction analysis if available  
+        if lg_status['human_interactions'] > 0:
+            human_analysis = langgraph_interceptor.get_human_interaction_analysis()
+            print(f"\n👤 Human Interaction Analysis:")
+            print(f"   • Total Interactions: {human_analysis['total_interactions']}")
+            print(f"   • Interaction Types: {human_analysis['interaction_types']}")
+        
+        # Error detection and system health analysis
+        error_summary = error_detector.get_error_summary(window_minutes=60)
+        print(f"\n🚨 Error Detection Summary (Last Hour):")
+        print(f"   • Total Errors: {error_summary['total_errors']}")
+        
+        if error_summary['total_errors'] > 0:
+            print(f"   • Severity Distribution: {error_summary['severity_distribution']}")
+            print(f"   • Component Distribution: {error_summary['component_distribution']}")
+            print(f"   • Gemini AI Analyzed: {error_summary.get('gemini_analyzed', 0)}")
+            print(f"   • Automatic Retries: {error_summary.get('retry_attempts', 0)}")
+            
+            if error_summary.get('most_recent_error'):
+                recent = error_summary['most_recent_error']
+                print(f"   • Most Recent Error: {recent.get('error_type', 'unknown')} in {recent.get('component', 'unknown')}")
+        else:
+            print(f"   ✅ No errors detected - system running smoothly!")
+        
+        # System health overview
+        system_health = error_detector.get_system_health()
+        print(f"\n💚 System Health Overview:")
+        print(f"   • Monitoring Status: {'🟢 Active' if system_health['is_monitoring'] else '🔴 Inactive'}")
+        print(f"   • Total Historical Errors: {system_health['total_errors']}")
+        print(f"   • Recent Errors (5min): {system_health['recent_errors']}")
+        
+        # Performance monitoring results
+        if 'performance_summary' in system_health:
+            perf = system_health['performance_summary']
+            print(f"\n⚡ Performance Monitoring:")
+            print(f"   • Average Execution Time: {perf.get('avg_execution_time', 'N/A')}")
+            print(f"   • Memory Usage Efficiency: {perf.get('avg_memory_usage', 'N/A')}")
+            print(f"   • CPU Usage Patterns: {perf.get('avg_cpu_usage', 'N/A')}")
+        
+        # Gemini AI analysis status
+        if error_detector.gemini_analyzer:
+            gemini_status = error_detector.get_gemini_status()
+            print(f"\n🤖 Gemini AI Analysis Status:")
+            print(f"   • Available: {'✅ Yes' if gemini_status.get('enabled', False) else '❌ No'}")
+            if gemini_status.get('enabled'):
+                print(f"   • Analysis Count: {gemini_status.get('analysis_count', 0)}")
+                print(f"   • Success Rate: {gemini_status.get('success_rate', 'N/A')}")
+        
+        # Show detailed error analysis if any errors occurred
         if error_detector.error_history:
-            print(f"\n🔍 Error Analysis ({len(error_detector.error_history)} errors detected):")
+            print(f"\n🔍 Detailed Error Analysis ({len(error_detector.error_history)} errors):")
             show_analysis()
+        
+        print(f"\n📈 Monitoring Capabilities Demonstrated:")
+        print(f"   ✓ Real-time LangChain component interception")  
+        print(f"   ✓ LangGraph workflow and state monitoring")
+        print(f"   ✓ Streaming event analysis and tracking")
+        print(f"   ✓ Error detection with AI-powered analysis")
+        print(f"   ✓ Performance and resource monitoring")
+        print(f"   ✓ System health and recovery tracking")
+        print(f"   ✓ Human interaction and approval monitoring")
+        print(f"   ✓ Checkpoint and state persistence monitoring")
         
         # Stop monitoring
         error_detector.stop_monitoring()

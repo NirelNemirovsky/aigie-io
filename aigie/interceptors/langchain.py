@@ -21,12 +21,44 @@ class LangChainInterceptor:
         self.intercepted_classes = set()
         self.original_methods = {}
         
-        # LangChain components to intercept
+        # LangChain components to intercept (updated for modern LangChain)
         self.target_classes = {
-            'LLMChain': ['run', '__call__', 'acall', 'arun'],
+            # Modern Chat Models (primary LLM interface)
+            'ChatOpenAI': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'ChatAnthropic': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'ChatGoogleGenerativeAI': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'ChatOllama': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            
+            # Legacy LLM support (still used in some cases)
+            'OpenAI': ['invoke', 'ainvoke', 'batch', 'abatch', '__call__', 'acall', 'agenerate', 'generate'],
+            'LLM': ['invoke', 'ainvoke', 'batch', 'abatch', '__call__', 'acall', 'agenerate', 'generate'],
+            
+            # Modern Tool System
+            'BaseTool': ['invoke', 'ainvoke', '_run', '_arun', 'run', 'arun'],
+            'StructuredTool': ['invoke', 'ainvoke', '_run', '_arun', 'run', 'arun'],
+            
+            # LCEL Runnable Components (core of modern LangChain)
+            'RunnablePassthrough': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'RunnableLambda': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'RunnableParallel': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'RunnableSequence': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            'RunnableBranch': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            
+            # Output Parsers
+            'BaseOutputParser': ['parse', 'aparse', 'parse_result', 'aparse_result', 'invoke', 'ainvoke'],
+            'StrOutputParser': ['parse', 'aparse', 'parse_result', 'aparse_result', 'invoke', 'ainvoke'],
+            'PydanticOutputParser': ['parse', 'aparse', 'parse_result', 'aparse_result', 'invoke', 'ainvoke'],
+            
+            # Retrieval Components
+            'BaseRetriever': ['invoke', 'ainvoke', 'get_relevant_documents', 'aget_relevant_documents'],
+            'VectorStoreRetriever': ['invoke', 'ainvoke', 'get_relevant_documents', 'aget_relevant_documents'],
+            
+            # Agents (modern agent system)
+            'AgentExecutor': ['invoke', 'ainvoke', 'batch', 'abatch', 'stream', 'astream'],
+            
+            # Legacy support (for backwards compatibility)
+            'LLMChain': ['invoke', 'ainvoke', 'run', '__call__', 'acall', 'arun'],
             'Agent': ['run', '__call__', 'acall', 'arun'],
-            'Tool': ['run', '__call__', 'acall', 'arun'],
-            'LLM': ['__call__', 'acall', 'agenerate', 'generate'],
         }
     
     def start_intercepting(self):
@@ -64,32 +96,131 @@ class LangChainInterceptor:
     
     def _patch_langchain_classes(self):
         """Patch specific LangChain classes."""
-        # Try to import and patch LangChain classes
+        classes_to_patch = {}
+        
+        # Modern Chat Models
         try:
-            # Try to import newer LangChain classes
+            from langchain_openai import ChatOpenAI
+            classes_to_patch['ChatOpenAI'] = ChatOpenAI
+        except ImportError:
+            self.logger.log_system_event("ChatOpenAI not available")
+        
+        try:
+            from langchain_anthropic import ChatAnthropic
+            classes_to_patch['ChatAnthropic'] = ChatAnthropic
+        except ImportError:
+            self.logger.log_system_event("ChatAnthropic not available")
+        
+        try:
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            classes_to_patch['ChatGoogleGenerativeAI'] = ChatGoogleGenerativeAI
+        except ImportError:
+            self.logger.log_system_event("ChatGoogleGenerativeAI not available")
+        
+        try:
+            from langchain_community.chat_models import ChatOllama
+            classes_to_patch['ChatOllama'] = ChatOllama
+        except ImportError:
+            self.logger.log_system_event("ChatOllama not available")
+        
+        # Legacy LLMs
+        try:
+            from langchain_openai import OpenAI
+            classes_to_patch['OpenAI'] = OpenAI
+        except ImportError:
             try:
-                from langchain.chains import LLMChain
-                from langchain.agents import Agent
-                from langchain.tools import BaseTool
-                from langchain.llms.base import LLM
-                
-                classes_to_patch = {
-                    'LLMChain': LLMChain,
-                    'Agent': Agent,
-                    'Tool': BaseTool,
-                    'LLM': LLM,
-                }
-                
-                for class_name, cls in classes_to_patch.items():
-                    if cls and class_name in self.target_classes:
-                        self._patch_class_methods(cls, class_name)
-                        
+                from langchain.llms import OpenAI
+                classes_to_patch['OpenAI'] = OpenAI
             except ImportError:
-                # If newer classes aren't available, just log it
-                self.logger.log_system_event("LangChain newer classes not available")
-                
-        except ImportError as e:
-            self.logger.log_system_event(f"LangChain not available: {e}")
+                self.logger.log_system_event("OpenAI LLM not available")
+        
+        try:
+            from langchain.llms.base import LLM
+            classes_to_patch['LLM'] = LLM
+        except ImportError:
+            self.logger.log_system_event("Base LLM not available")
+        
+        # Modern Tool System
+        try:
+            from langchain_core.tools import BaseTool, StructuredTool
+            classes_to_patch['BaseTool'] = BaseTool
+            classes_to_patch['StructuredTool'] = StructuredTool
+        except ImportError:
+            try:
+                from langchain.tools import BaseTool, StructuredTool
+                classes_to_patch['BaseTool'] = BaseTool
+                classes_to_patch['StructuredTool'] = StructuredTool
+            except ImportError:
+                self.logger.log_system_event("Modern tool classes not available")
+        
+        # LCEL Runnable Components
+        try:
+            from langchain_core.runnables import (
+                RunnablePassthrough, RunnableLambda, RunnableParallel, 
+                RunnableSequence, RunnableBranch
+            )
+            classes_to_patch.update({
+                'RunnablePassthrough': RunnablePassthrough,
+                'RunnableLambda': RunnableLambda,
+                'RunnableParallel': RunnableParallel,
+                'RunnableSequence': RunnableSequence,
+                'RunnableBranch': RunnableBranch,
+            })
+        except ImportError:
+            self.logger.log_system_event("LCEL Runnable components not available")
+        
+        # Output Parsers
+        try:
+            from langchain_core.output_parsers import BaseOutputParser, StrOutputParser, PydanticOutputParser
+            classes_to_patch.update({
+                'BaseOutputParser': BaseOutputParser,
+                'StrOutputParser': StrOutputParser,
+                'PydanticOutputParser': PydanticOutputParser,
+            })
+        except ImportError:
+            try:
+                from langchain.output_parsers import BaseOutputParser, StrOutputParser, PydanticOutputParser
+                classes_to_patch.update({
+                    'BaseOutputParser': BaseOutputParser,
+                    'StrOutputParser': StrOutputParser,
+                    'PydanticOutputParser': PydanticOutputParser,
+                })
+            except ImportError:
+                self.logger.log_system_event("Output parsers not available")
+        
+        # Retrieval Components
+        try:
+            from langchain_core.retrievers import BaseRetriever
+            from langchain.vectorstores.base import VectorStoreRetriever
+            classes_to_patch.update({
+                'BaseRetriever': BaseRetriever,
+                'VectorStoreRetriever': VectorStoreRetriever,
+            })
+        except ImportError:
+            self.logger.log_system_event("Retrieval components not available")
+        
+        # Modern Agent System
+        try:
+            from langchain.agents import AgentExecutor
+            classes_to_patch['AgentExecutor'] = AgentExecutor
+        except ImportError:
+            self.logger.log_system_event("AgentExecutor not available")
+        
+        # Legacy support
+        try:
+            from langchain.chains import LLMChain
+            from langchain.agents import Agent
+            classes_to_patch.update({
+                'LLMChain': LLMChain,
+                'Agent': Agent,
+            })
+        except ImportError:
+            self.logger.log_system_event("Legacy LangChain classes not available")
+        
+        # Patch all available classes
+        for class_name, cls in classes_to_patch.items():
+            if cls and class_name in self.target_classes:
+                self._patch_class_methods(cls, class_name)
     
     def _patch_class_methods(self, cls: type, class_name: str):
         """Patch methods of a specific class."""
@@ -252,6 +383,61 @@ class LangChainInterceptor:
                     setattr(chain_instance, method_name, patched_method)
             
             self.logger.log_system_event(f"Intercepted chain instance: {class_name}")
+    
+    def intercept_tool_function(self, tool_func: Callable, tool_name: str = None) -> Callable:
+        """Intercept a tool function decorated with @tool."""
+        tool_name = tool_name or getattr(tool_func, '__name__', 'unknown_tool')
+        
+        @functools.wraps(tool_func)
+        def intercepted_tool(*args, **kwargs):
+            # Create error context
+            context = ErrorContext(
+                timestamp=datetime.now(),
+                framework="langchain",
+                component="Tool",
+                method="__call__",
+                input_data=self._extract_tool_input_data(args, kwargs, tool_name)
+            )
+            
+            # Store operation for potential retry
+            operation_id = f"langchain_Tool_{tool_name}"
+            self.error_detector.store_operation_for_retry(
+                operation_id, tool_func, args, kwargs, context
+            )
+            
+            # Monitor execution
+            with self.error_detector.monitor_execution(
+                framework="langchain",
+                component="Tool",
+                method="__call__",
+                input_data=context.input_data
+            ):
+                try:
+                    result = tool_func(*args, **kwargs)
+                    self.logger.log_system_event(f"Tool '{tool_name}' executed successfully")
+                    return result
+                except Exception as e:
+                    self.logger.log_system_event(f"Tool '{tool_name}' execution failed: {e}")
+                    raise
+        
+        return intercepted_tool
+    
+    def _extract_tool_input_data(self, args: tuple, kwargs: dict, tool_name: str) -> Optional[Dict[str, Any]]:
+        """Extract input data from tool function call."""
+        input_data = {"tool_name": tool_name}
+        
+        # Add positional args (usually tool inputs)
+        if args:
+            input_data["args"] = [str(arg)[:100] for arg in args[:3]]  # First 3 args, truncated
+        
+        # Add keyword arguments
+        for key, value in kwargs.items():
+            if key in ['input', 'query', 'text', 'prompt']:
+                input_data[key] = str(value)[:200]  # Truncate long inputs
+            else:
+                input_data[key] = type(value).__name__
+        
+        return input_data
     
     def get_interception_status(self) -> Dict[str, Any]:
         """Get current interception status."""

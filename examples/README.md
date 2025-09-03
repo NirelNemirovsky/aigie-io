@@ -1,64 +1,110 @@
-# AI Research Assistant Example
+# AI Research Assistant Examples
 
-A comprehensive demonstration of aigie's error detection and monitoring capabilities with a real-world AI research assistant using multiple tools and LangGraph orchestration.
+Comprehensive demonstrations of aigie's error detection and monitoring capabilities with modern LangChain and LangGraph patterns.
 
 ## 🚀 Quick Start
 
 ```bash
 cd examples
-python3 ai_research_assistant.py
+
+# 🚀 Start Here
+python3 ai_research_assistant.py          # Comprehensive research assistant with full monitoring demo
+
+# 🌟 Advanced Features  
+python3 advanced_langgraph_features.py    # Human-in-the-loop • SQLite checkpointing • Error recovery
 ```
 
-## 📋 What This Example Demonstrates
+## 📋 What These Examples Demonstrate
 
-### Core Capabilities
-- **Multi-Tool Agent**: Web search, document analysis, and code generation
-- **LangGraph Workflow**: Complex orchestration with state management
-- **Error Simulation**: Intentional failures to test aigie's detection
-- **Real-Time Monitoring**: Performance metrics and tool statistics
+### Modern Framework Integration
+- **LangChain v0.2/0.3 Patterns**: Using `init_chat_model()`, `@tool`, LCEL chains
+- **LangGraph ReAct Agents**: Pre-built agents with `create_react_agent`  
+- **Streaming & Events**: Real-time monitoring with `stream_events`/`astream_events`
+- **Checkpointing**: Persistent state management with MemorySaver/SqliteSaver
+- **Human-in-the-Loop**: Interactive workflows with approval checkpoints
 
-### Aigie Integration
-- **Error Detection**: Automatic classification and severity assessment
-- **Performance Monitoring**: Execution time, memory usage, CPU tracking
-- **Framework Interceptors**: LangChain and LangGraph automatic patching
-- **Intelligent Retry**: Context-aware retry with enhanced prompts
+### Complete Aigie Monitoring (All Shown In Context)
+- **LangChain Interception**: ChatModels, LCEL Runnables, @tool functions, output parsers
+- **LangGraph Monitoring**: State graphs, streaming events, checkpoints, human interactions
+- **Real-Time Analytics**: Event stream analysis, checkpoint operations, performance metrics
+- **Error Intelligence**: AI-powered detection, classification, and automatic remediation
+- **System Health**: Resource monitoring, performance tracking, recovery statistics
+- **Production Insights**: All monitoring capabilities demonstrated during realistic workflows
 
 ## 🔧 Requirements
 
-- Python 3.8+
+- Python 3.9+
+- **Modern Dependencies**: Latest LangChain, LangGraph, and LangChain community packages
+- **API Access**: OpenAI, Anthropic, or Google AI for model providers
 - **Gemini API Key (Recommended)**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
   ```bash
   export GEMINI_API_KEY="your-api-key-here"
+  export OPENAI_API_KEY="your-openai-key"  # For ChatGPT models
+  export ANTHROPIC_API_KEY="your-anthropic-key"  # For Claude models
   ```
-- **Or Google Cloud/Vertex AI** (Alternative): Set `GOOGLE_CLOUD_PROJECT`
-- Internet connection for web search functionality
 
-## 🏗️ Architecture
+## 🏗️ Modern Architecture
 
-The example implements a research workflow with three main tools:
+### Updated Research Assistant (`ai_research_assistant.py`)
+Uses modern LangGraph patterns with:
+- **ReAct Agent**: Built with `create_react_agent` from `langgraph.prebuilt`
+- **Function-based Tools**: Simple `@tool` decorated functions instead of classes
+- **Modern Chat Models**: Using `init_chat_model()` with string model identifiers
+- **Event Streaming**: Real-time monitoring with `astream_events()`
+- **Checkpointing**: Persistent state with `MemorySaver`
 
-1. **WebSearchTool**: Searches for research papers and information
-2. **DocumentAnalysisTool**: Analyzes documents and extracts insights
-3. **CodeGenerationTool**: Generates code snippets for data analysis
+### Research Tools (Modern Implementation)
+1. **web_search_tool**: Simple function for finding research information
+2. **document_analysis_tool**: Analyzes documents and extracts insights  
+3. **code_generation_tool**: Generates code snippets for data analysis
 
-The workflow is orchestrated using LangGraph with state management and error handling.
+### Human-in-the-Loop Features
+- **Approval Checkpoints**: User can approve/reject agent actions
+- **Interactive Corrections**: Modify agent plans before execution
+- **Error Intervention**: Human oversight when errors are detected
 
-## 🎯 Key Features
+## 🎯 Enhanced Features
 
-- **Real-time Error Detection**: Catches and classifies various error types
-- **Performance Monitoring**: Tracks execution metrics across all tools
-- **Intelligent Retry**: Automatically retries failed operations with context
-- **Pattern Learning**: Learns from successful and failed operations
-- **Prompt Injection**: Injects error context into AI agent prompts for remediation
+- **Real-time Stream Monitoring**: Every event in the agent execution is tracked
+- **Modern Component Detection**: Monitors ChatModels, LCEL chains, modern tools
+- **Checkpoint Monitoring**: Tracks state persistence operations
+- **Event-Driven Analytics**: Detailed analysis of agent execution patterns
+- **AI-Powered Remediation**: Gemini analyzes errors and suggests fixes
+- **Streaming Analytics**: Real-time performance metrics during execution
 
-## 📊 Expected Behavior
+## 📊 What You'll See
 
-The example will:
-1. Initialize aigie monitoring and interceptors
-2. Create a LangGraph workflow with research tools
-3. Execute the workflow with simulated errors
-4. Demonstrate aigie's error detection and handling
-5. Show tool performance statistics and error summaries
+The updated examples will:
+1. Initialize modern LangChain/LangGraph components with aigie monitoring
+2. Create ReAct agents with real-time event streaming
+3. Execute workflows with comprehensive error detection
+4. Show streaming event analysis and checkpoint monitoring
+5. Demonstrate human-in-the-loop intervention capabilities
+6. Display modern monitoring dashboards and analytics
+
+## 📚 Example Details
+
+### 🚀 ai_research_assistant.py
+**Comprehensive Research Assistant & Monitoring Demo**
+- **Complete workflow**: Web search, document analysis, code generation with realistic complexity
+- **Comprehensive monitoring demo**: Shows ALL interceptor capabilities in realistic context
+- **Error simulation**: Extensive testing of aigie's detection and recovery capabilities
+- **Real-world patterns**: 900+ lines demonstrating production-ready workflows
+- **Full analytics**: LangChain/LangGraph monitoring, streaming analysis, error analytics
+- **Interactive monitoring**: See interceptor capabilities during actual agent execution
+
+**Perfect for:** Understanding complete workflows AND seeing all monitoring capabilities in action
+
+### 🌟 advanced_langgraph_features.py
+**Advanced Production Features**
+- **Human-in-the-loop**: Approval workflows with interrupt() and checkpoints
+- **Advanced persistence**: SQLite checkpointing with thread management
+- **Error recovery**: Conditional routing and intelligent retry patterns
+- **Multi-agent coordination**: Complex workflow orchestration
+- **Advanced state management**: Proper TypedDict schemas and validation
+- **Production patterns**: Command objects and dynamic flow control
+
+**Perfect for:** Production deployments, advanced LangGraph features, enterprise workflows
 
 ## 🚨 Troubleshooting
 

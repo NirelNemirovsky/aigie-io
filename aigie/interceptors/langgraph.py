@@ -21,16 +21,45 @@ class LangGraphInterceptor:
         self.intercepted_classes = set()
         self.original_methods = {}
         
-        # LangGraph components to intercept
+        # LangGraph components to intercept (updated for modern LangGraph)
         self.target_classes = {
-            'StateGraph': ['add_node', 'add_edge', 'compile', 'set_entry_point', 'set_finish_point'],
-            'CompiledGraph': ['invoke', 'ainvoke', 'stream', 'astream'],
+            # Core Graph Components
+            'StateGraph': ['add_node', 'add_edge', 'add_conditional_edges', 'compile', 'set_entry_point', 'set_finish_point'],
+            'MessageGraph': ['add_node', 'add_edge', 'add_conditional_edges', 'compile', 'set_entry_point', 'set_finish_point'],
+            
+            # Compiled Graph (main execution interface)
+            'CompiledStateGraph': ['invoke', 'ainvoke', 'stream', 'astream', 'stream_events', 'astream_events'],
+            'CompiledGraph': ['invoke', 'ainvoke', 'stream', 'astream', 'stream_events', 'astream_events'],
+            
+            # Checkpointer System
+            'MemorySaver': ['put', 'aget', 'aput', 'alist', 'get_tuple', 'put_writes'],
+            'SqliteSaver': ['put', 'aget', 'aput', 'alist', 'get_tuple', 'put_writes'],
+            'BaseCheckpointSaver': ['put', 'aget', 'aput', 'alist', 'get_tuple', 'put_writes'],
+            
+            # Prebuilt Agents
+            'create_react_agent': ['invoke', 'ainvoke', 'stream', 'astream', 'stream_events', 'astream_events'],
+            
+            # Human Input Nodes
+            'HumanMessage': ['__init__'],
+            
+            # Thread Management
+            'Thread': ['invoke', 'ainvoke', 'stream', 'astream'],
         }
         
         # Track graph state and transitions
         self.graph_states = {}
         self.node_executions = {}
         self.state_transitions = []
+        
+        # Event streaming monitoring
+        self.streaming_sessions = {}
+        self.event_history = []
+        
+        # Checkpoint monitoring
+        self.checkpoint_operations = []
+        
+        # Human-in-the-loop tracking
+        self.human_interactions = []
     
     def start_intercepting(self):
         """Start intercepting LangGraph operations."""
@@ -67,22 +96,64 @@ class LangGraphInterceptor:
     
     def _patch_langgraph_classes(self):
         """Patch specific LangGraph classes."""
-        # Try to import and patch LangGraph classes
+        classes_to_patch = {}
+        
+        # Core Graph Components
         try:
-            from langgraph.graph import StateGraph
-            from langgraph.graph.state import CompiledStateGraph
-            
-            classes_to_patch = {
+            from langgraph.graph import StateGraph, MessageGraph
+            classes_to_patch.update({
                 'StateGraph': StateGraph,
-                'CompiledGraph': CompiledStateGraph,
-            }
-            
-            for class_name, cls in classes_to_patch.items():
-                if cls and class_name in self.target_classes:
-                    self._patch_class_methods(cls, class_name)
-                    
-        except ImportError as e:
-            self.logger.log_system_event(f"LangGraph not available: {e}")
+                'MessageGraph': MessageGraph,
+            })
+        except ImportError:
+            self.logger.log_system_event("Core LangGraph classes not available")
+        
+        # Compiled Graph Components
+        try:
+            from langgraph.graph.state import CompiledStateGraph
+            classes_to_patch['CompiledStateGraph'] = CompiledStateGraph
+            classes_to_patch['CompiledGraph'] = CompiledStateGraph  # Alias for backwards compatibility
+        except ImportError:
+            self.logger.log_system_event("CompiledStateGraph not available")
+        
+        # Checkpointer System
+        try:
+            from langgraph.checkpoint.memory import MemorySaver
+            classes_to_patch['MemorySaver'] = MemorySaver
+        except ImportError:
+            self.logger.log_system_event("MemorySaver not available")
+        
+        try:
+            from langgraph.checkpoint.sqlite import SqliteSaver
+            classes_to_patch['SqliteSaver'] = SqliteSaver
+        except ImportError:
+            self.logger.log_system_event("SqliteSaver not available")
+        
+        try:
+            from langgraph.checkpoint.base import BaseCheckpointSaver
+            classes_to_patch['BaseCheckpointSaver'] = BaseCheckpointSaver
+        except ImportError:
+            self.logger.log_system_event("BaseCheckpointSaver not available")
+        
+        # Prebuilt Agents
+        try:
+            from langgraph.prebuilt import create_react_agent
+            # Note: create_react_agent is a function, we'll handle it separately
+            self.logger.log_system_event("create_react_agent available for interception")
+        except ImportError:
+            self.logger.log_system_event("create_react_agent not available")
+        
+        # Human Input Components
+        try:
+            from langchain_core.messages import HumanMessage
+            classes_to_patch['HumanMessage'] = HumanMessage
+        except ImportError:
+            self.logger.log_system_event("HumanMessage not available")
+        
+        # Patch all available classes
+        for class_name, cls in classes_to_patch.items():
+            if cls and class_name in self.target_classes:
+                self._patch_class_methods(cls, class_name)
     
     def _patch_class_methods(self, cls: type, class_name: str):
         """Patch methods of a specific class."""
@@ -405,7 +476,97 @@ class LangGraphInterceptor:
             "target_classes": list(self.target_classes.keys()),
             "tracked_graphs": len(self.graph_states),
             "tracked_nodes": len(self.node_executions),
-            "state_transitions": len(self.state_transitions)
+            "state_transitions": len(self.state_transitions),
+            "streaming_sessions": len(self.streaming_sessions),
+            "active_streams": len([s for s in self.streaming_sessions.values() if s['status'] == 'active']),
+            "event_history_size": len(self.event_history),
+            "checkpoint_operations": len(self.checkpoint_operations),
+            "human_interactions": len(self.human_interactions)
+        }
+    
+    def get_streaming_analysis(self) -> Dict[str, Any]:
+        """Get analysis of streaming sessions and events."""
+        active_sessions = [s for s in self.streaming_sessions.values() if s['status'] == 'active']
+        completed_sessions = [s for s in self.streaming_sessions.values() if s['status'] == 'completed']
+        error_sessions = [s for s in self.streaming_sessions.values() if s['status'] == 'error']
+        
+        # Analyze recent events
+        recent_events = self.event_history[-50:] if self.event_history else []
+        event_types = {}
+        for event in recent_events:
+            event_type = event['event_type']
+            event_types[event_type] = event_types.get(event_type, 0) + 1
+        
+        return {
+            "total_sessions": len(self.streaming_sessions),
+            "active_sessions": len(active_sessions),
+            "completed_sessions": len(completed_sessions),
+            "error_sessions": len(error_sessions),
+            "total_events": len(self.event_history),
+            "recent_event_types": event_types,
+            "active_session_details": [
+                {
+                    "start_time": s['start_time'].isoformat(),
+                    "method": s['method'],
+                    "duration_seconds": (datetime.now() - s['start_time']).total_seconds()
+                }
+                for s in active_sessions
+            ]
+        }
+    
+    def get_checkpoint_analysis(self) -> Dict[str, Any]:
+        """Get analysis of checkpoint operations."""
+        if not self.checkpoint_operations:
+            return {"total_operations": 0}
+        
+        successful_ops = [op for op in self.checkpoint_operations if op['status'] == 'success']
+        failed_ops = [op for op in self.checkpoint_operations if op['status'] == 'error']
+        
+        # Analyze operation types
+        operation_types = {}
+        for op in self.checkpoint_operations:
+            method = op['method']
+            operation_types[method] = operation_types.get(method, 0) + 1
+        
+        return {
+            "total_operations": len(self.checkpoint_operations),
+            "successful_operations": len(successful_ops),
+            "failed_operations": len(failed_ops),
+            "success_rate": (len(successful_ops) / len(self.checkpoint_operations) * 100) if self.checkpoint_operations else 0,
+            "operation_types": operation_types,
+            "recent_operations": [
+                {
+                    "method": op['method'],
+                    "status": op['status'],
+                    "checkpointer_type": op['checkpointer_type'],
+                    "timestamp": op['start_time'].isoformat()
+                }
+                for op in self.checkpoint_operations[-10:]  # Last 10 operations
+            ]
+        }
+    
+    def get_human_interaction_analysis(self) -> Dict[str, Any]:
+        """Get analysis of human-in-the-loop interactions."""
+        if not self.human_interactions:
+            return {"total_interactions": 0}
+        
+        # Analyze interaction types
+        interaction_types = {}
+        for interaction in self.human_interactions:
+            itype = interaction['type']
+            interaction_types[itype] = interaction_types.get(itype, 0) + 1
+        
+        return {
+            "total_interactions": len(self.human_interactions),
+            "interaction_types": interaction_types,
+            "recent_interactions": [
+                {
+                    "type": i['type'],
+                    "timestamp": i['timestamp'].isoformat(),
+                    "session_id": i['session_id']
+                }
+                for i in self.human_interactions[-10:]  # Last 10 interactions
+            ]
         }
     
     def get_graph_analysis(self) -> Dict[str, Any]:
@@ -476,3 +637,238 @@ class LangGraphInterceptor:
                 for t in self.state_transitions[-10:]  # Last 10 transitions
             ]
         }
+    
+    def intercept_event_stream(self, stream_method: Callable, graph_instance: Any, method_name: str):
+        """Intercept event streaming methods for real-time monitoring."""
+        @functools.wraps(stream_method)
+        def intercepted_stream(*args, **kwargs):
+            session_id = f"stream_{id(graph_instance)}_{datetime.now().timestamp()}"
+            
+            # Track streaming session
+            self.streaming_sessions[session_id] = {
+                'start_time': datetime.now(),
+                'graph_id': id(graph_instance),
+                'method': method_name,
+                'status': 'active'
+            }
+            
+            self.logger.log_system_event(f"Started event streaming session: {session_id}")
+            
+            try:
+                # Get the original stream
+                stream = stream_method(*args, **kwargs)
+                
+                # Wrap the stream to monitor events
+                def monitored_stream():
+                    try:
+                        for event in stream:
+                            # Log and monitor each event
+                            self._process_stream_event(event, session_id)
+                            yield event
+                    except Exception as e:
+                        self.streaming_sessions[session_id]['status'] = 'error'
+                        self.streaming_sessions[session_id]['error'] = str(e)
+                        self.logger.log_system_event(f"Stream error in {session_id}: {e}")
+                        raise
+                    finally:
+                        self.streaming_sessions[session_id]['status'] = 'completed'
+                        self.streaming_sessions[session_id]['end_time'] = datetime.now()
+                
+                return monitored_stream()
+                
+            except Exception as e:
+                self.streaming_sessions[session_id]['status'] = 'error'
+                self.streaming_sessions[session_id]['error'] = str(e)
+                raise
+        
+        return intercepted_stream
+    
+    async def intercept_async_event_stream(self, stream_method: Callable, graph_instance: Any, method_name: str):
+        """Intercept async event streaming methods for real-time monitoring."""
+        @functools.wraps(stream_method)
+        async def intercepted_astream(*args, **kwargs):
+            session_id = f"astream_{id(graph_instance)}_{datetime.now().timestamp()}"
+            
+            # Track streaming session
+            self.streaming_sessions[session_id] = {
+                'start_time': datetime.now(),
+                'graph_id': id(graph_instance),
+                'method': method_name,
+                'status': 'active'
+            }
+            
+            self.logger.log_system_event(f"Started async event streaming session: {session_id}")
+            
+            try:
+                # Get the original stream
+                stream = stream_method(*args, **kwargs)
+                
+                # Wrap the stream to monitor events
+                async def monitored_astream():
+                    try:
+                        async for event in stream:
+                            # Log and monitor each event
+                            self._process_stream_event(event, session_id)
+                            yield event
+                    except Exception as e:
+                        self.streaming_sessions[session_id]['status'] = 'error'
+                        self.streaming_sessions[session_id]['error'] = str(e)
+                        self.logger.log_system_event(f"Async stream error in {session_id}: {e}")
+                        raise
+                    finally:
+                        self.streaming_sessions[session_id]['status'] = 'completed'
+                        self.streaming_sessions[session_id]['end_time'] = datetime.now()
+                
+                return monitored_astream()
+                
+            except Exception as e:
+                self.streaming_sessions[session_id]['status'] = 'error'
+                self.streaming_sessions[session_id]['error'] = str(e)
+                raise
+        
+        return intercepted_astream
+    
+    def _process_stream_event(self, event: dict, session_id: str):
+        """Process and log streaming events."""
+        try:
+            event_type = event.get('event', 'unknown')
+            event_name = event.get('name', 'unknown')
+            
+            # Log significant events
+            if event_type in ['on_chain_start', 'on_chain_end', 'on_chain_error', 
+                             'on_tool_start', 'on_tool_end', 'on_tool_error',
+                             'on_llm_start', 'on_llm_end', 'on_llm_error']:
+                
+                event_record = {
+                    'session_id': session_id,
+                    'timestamp': datetime.now(),
+                    'event_type': event_type,
+                    'event_name': event_name,
+                    'data': event.get('data', {}),
+                }
+                
+                # Store event (keep last 1000 events)
+                self.event_history.append(event_record)
+                if len(self.event_history) > 1000:
+                    self.event_history = self.event_history[-1000:]
+                
+                # Log detailed information for errors
+                if 'error' in event_type:
+                    self.logger.log_system_event(
+                        f"Stream event error: {event_type} in {event_name}",
+                        {"session_id": session_id, "event": event}
+                    )
+                else:
+                    self.logger.log_system_event(
+                        f"Stream event: {event_type} in {event_name}",
+                        {"session_id": session_id}
+                    )
+                    
+        except Exception as e:
+            self.logger.log_system_event(f"Error processing stream event: {e}")
+    
+    def intercept_checkpoint_operation(self, checkpoint_method: Callable, checkpointer_instance: Any, method_name: str):
+        """Intercept checkpoint operations for monitoring state persistence."""
+        @functools.wraps(checkpoint_method)
+        def intercepted_checkpoint(*args, **kwargs):
+            operation_id = f"checkpoint_{method_name}_{datetime.now().timestamp()}"
+            
+            operation_record = {
+                'operation_id': operation_id,
+                'method': method_name,
+                'checkpointer_type': type(checkpointer_instance).__name__,
+                'start_time': datetime.now(),
+                'args_summary': str(args)[:200] if args else None,
+                'kwargs_summary': {k: str(v)[:100] for k, v in kwargs.items()},
+            }
+            
+            try:
+                result = checkpoint_method(*args, **kwargs)
+                operation_record.update({
+                    'status': 'success',
+                    'end_time': datetime.now(),
+                    'result_type': type(result).__name__ if result else None
+                })
+                
+                self.logger.log_system_event(f"Checkpoint operation {method_name} completed successfully")
+                
+                return result
+                
+            except Exception as e:
+                operation_record.update({
+                    'status': 'error',
+                    'end_time': datetime.now(),
+                    'error': str(e)
+                })
+                
+                self.logger.log_system_event(f"Checkpoint operation {method_name} failed: {e}")
+                raise
+                
+            finally:
+                # Store operation record
+                self.checkpoint_operations.append(operation_record)
+                if len(self.checkpoint_operations) > 500:  # Keep last 500 operations
+                    self.checkpoint_operations = self.checkpoint_operations[-500:]
+        
+        return intercepted_checkpoint
+    
+    def intercept_create_react_agent(self, create_func: Callable):
+        """Intercept create_react_agent function calls."""
+        @functools.wraps(create_func)
+        def intercepted_create_react_agent(*args, **kwargs):
+            self.logger.log_system_event("Creating ReAct agent", {
+                "args_count": len(args),
+                "kwargs_keys": list(kwargs.keys())
+            })
+            
+            try:
+                # Create the agent
+                agent = create_func(*args, **kwargs)
+                
+                # Intercept the agent's methods
+                if hasattr(agent, 'invoke'):
+                    agent.invoke = self._create_sync_patched_method(
+                        agent.invoke, 'ReActAgent', 'invoke'
+                    )
+                
+                if hasattr(agent, 'ainvoke'):
+                    agent.ainvoke = self._create_async_patched_method(
+                        agent.ainvoke, 'ReActAgent', 'ainvoke'
+                    )
+                
+                if hasattr(agent, 'stream'):
+                    agent.stream = self.intercept_event_stream(
+                        agent.stream, agent, 'stream'
+                    )
+                
+                if hasattr(agent, 'astream'):
+                    agent.astream = self.intercept_async_event_stream(
+                        agent.astream, agent, 'astream'
+                    )
+                
+                self.logger.log_system_event("Successfully created and intercepted ReAct agent")
+                return agent
+                
+            except Exception as e:
+                self.logger.log_system_event(f"Failed to create ReAct agent: {e}")
+                raise
+        
+        return intercepted_create_react_agent
+    
+    def track_human_interaction(self, interaction_type: str, interaction_data: dict):
+        """Track human-in-the-loop interactions."""
+        interaction_record = {
+            'timestamp': datetime.now(),
+            'type': interaction_type,
+            'data': interaction_data,
+            'session_id': interaction_data.get('session_id', 'unknown')
+        }
+        
+        self.human_interactions.append(interaction_record)
+        if len(self.human_interactions) > 100:  # Keep last 100 interactions
+            self.human_interactions = self.human_interactions[-100:]
+        
+        self.logger.log_system_event(
+            f"Human interaction: {interaction_type}",
+            {"session_id": interaction_record['session_id']}
+        )
