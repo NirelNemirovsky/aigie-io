@@ -26,8 +26,11 @@ python3 ai_research_assistant.py
 ## 🔧 Requirements
 
 - Python 3.8+
-- Google Cloud project with Vertex AI enabled (set `GOOGLE_CLOUD_PROJECT`)
-- Or Gemini API key (set `GEMINI_API_KEY`)
+- **Gemini API Key (Recommended)**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
+  ```bash
+  export GEMINI_API_KEY="your-api-key-here"
+  ```
+- **Or Google Cloud/Vertex AI** (Alternative): Set `GOOGLE_CLOUD_PROJECT`
 - Internet connection for web search functionality
 
 ## 🏗️ Architecture
@@ -65,6 +68,20 @@ The example will:
 | Import errors | Install requirements: `pip install -r requirements.txt` |
 | LangGraph errors | Update to latest version: `pip install -U langgraph` |
 | Permission errors | Check Google Cloud authentication: `gcloud auth login` |
+
+## 🔧 Gemini API Key Setup
+
+For a simple demonstration of setting up Aigie with Gemini API key authentication:
+
+```bash
+python3 gemini_api_key_setup.py
+```
+
+This example shows:
+- How to configure Gemini API key authentication
+- Testing error analysis capabilities
+- Generating remediation strategies
+- Configuration options and best practices
 
 ## 🔍 Customization
 

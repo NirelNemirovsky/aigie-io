@@ -218,8 +218,8 @@ class AigieConfig:
         if os.getenv("AIGIE_GEMINI_LOCATION"):
             config.gemini_location = os.getenv("AIGIE_GEMINI_LOCATION", "us-central1")
         
-        if os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("AIGIE_GEMINI_API_KEY"):
-            config.gemini_api_key = os.getenv("GOOGLE_APPLICATION_CREDENTIALS") or os.getenv("AIGIE_GEMINI_API_KEY")
+        if os.getenv("GEMINI_API_KEY") or os.getenv("AIGIE_GEMINI_API_KEY"):
+            config.gemini_api_key = os.getenv("GEMINI_API_KEY") or os.getenv("AIGIE_GEMINI_API_KEY")
         
         # Retry settings
         if os.getenv("AIGIE_ENABLE_RETRY"):

@@ -37,19 +37,8 @@ class GeminiAnalyzer:
         self.model = None
         self.is_initialized = False
         
-        # Prefer Vertex AI if project is set
-        if self.project_id and VERTEX_AVAILABLE:
-            try:
-                vertexai.init(project=self.project_id, location=self.location)
-                self.model = VertexGenerativeModel("gemini-2.5-flash")
-                self.backend = 'vertex'
-                self.is_initialized = True
-                logging.info(f"Gemini (Vertex) initialized successfully for project: {self.project_id}")
-            except Exception as e:
-                logging.warning(f"Failed to initialize Gemini (Vertex): {e}")
-                self.is_initialized = False
-        # Else try API key
-        elif self.api_key and GEMINI_API_KEY_AVAILABLE:
+        # Prefer API key authentication over Vertex AI
+        if self.api_key and GEMINI_API_KEY_AVAILABLE:
             try:
                 genai.configure(api_key=self.api_key)
                 # Use gemini-2.5-flash for the API key backend
@@ -60,8 +49,19 @@ class GeminiAnalyzer:
             except Exception as e:
                 logging.warning(f"Failed to initialize Gemini (API key): {e}")
                 self.is_initialized = False
+        # Fallback to Vertex AI if API key is not available or failed
+        elif self.project_id and VERTEX_AVAILABLE:
+            try:
+                vertexai.init(project=self.project_id, location=self.location)
+                self.model = VertexGenerativeModel("gemini-2.5-flash")
+                self.backend = 'vertex'
+                self.is_initialized = True
+                logging.info(f"Gemini (Vertex AI) initialized successfully for project: {self.project_id}")
+            except Exception as e:
+                logging.warning(f"Failed to initialize Gemini (Vertex AI): {e}")
+                self.is_initialized = False
         else:
-            logging.info("Gemini not available - using fallback error analysis")
+            logging.info("Gemini not available - no API key or Vertex AI project configured")
             self.is_initialized = False
     
     def analyze_error(self, error: Exception, context: ErrorContext) -> Dict[str, Any]:
