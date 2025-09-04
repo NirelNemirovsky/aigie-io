@@ -34,10 +34,25 @@ import sys
 import asyncio
 import sqlite3
 import logging
+import time
 from typing import Dict, Any, List, Optional, Literal, TypedDict, Annotated
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# Set up Gemini API key for testing
+if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
+    # For demonstration purposes, set a placeholder
+    # In production, users should set their actual API key
+    os.environ["GEMINI_API_KEY"] = "demo_key_for_testing"
+    print("⚠️  Using demo API key. Set GEMINI_API_KEY environment variable for real Gemini access.")
 
 # Add parent directory for aigie imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -241,7 +256,6 @@ async def deep_analysis_with_llm(source_data: Dict[str, Any], analysis_type: Lit
         # Parse LLM response
         import json
         import re
-        import time
         
         # Extract JSON from response
         json_match = re.search(r'\{.*\}', content, re.DOTALL)
@@ -335,7 +349,6 @@ async def synthesis_engine_with_llm(analysis_results: List[Dict[str, Any]], synt
         # Parse LLM response
         import json
         import re
-        import time
         
         # Extract JSON from response
         json_match = re.search(r'\{.*\}', content, re.DOTALL)

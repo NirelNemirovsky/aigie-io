@@ -5,6 +5,7 @@ Main error detection engine for Aigie.
 import traceback
 import asyncio
 import logging
+import time
 from typing import Dict, Any, Optional, Callable, List, Union
 from datetime import datetime, timedelta
 from contextlib import contextmanager
@@ -16,6 +17,55 @@ from .error_types import (
 from .monitoring import PerformanceMonitor, ResourceMonitor
 from .gemini_analyzer import GeminiAnalyzer
 from .intelligent_retry import IntelligentRetry
+
+
+class RemediationGuard:
+    """Guards against infinite remediation loops and tracks remediation depth."""
+    
+    def __init__(self, max_depth: int = 3):
+        self.max_depth = max_depth
+        self.remediation_stack: List[str] = []
+        self.remediation_history: Dict[str, int] = {}
+        self.circular_detection: set = set()
+        
+    def can_remediate(self, error_signature: str) -> bool:
+        """Check if we can safely attempt remediation."""
+        # Check depth limit
+        if len(self.remediation_stack) >= self.max_depth:
+            logging.warning(f"Max remediation depth ({self.max_depth}) reached - preventing infinite loop")
+            return False
+        
+        # Check for circular remediation
+        if error_signature in self.circular_detection:
+            logging.warning(f"Circular remediation detected for {error_signature} - aborting")
+            return False
+        
+        # Check frequency limit (don't retry the same error too often)
+        if self.remediation_history.get(error_signature, 0) > 5:
+            logging.warning(f"Too many remediation attempts for {error_signature} - backing off")
+            return False
+        
+        return True
+    
+    def start_remediation(self, error_signature: str):
+        """Mark the start of a remediation attempt."""
+        self.remediation_stack.append(error_signature)
+        self.circular_detection.add(error_signature)
+        self.remediation_history[error_signature] = self.remediation_history.get(error_signature, 0) + 1
+        
+    def end_remediation(self, error_signature: str):
+        """Mark the end of a remediation attempt."""
+        if error_signature in self.remediation_stack:
+            self.remediation_stack.remove(error_signature)
+        self.circular_detection.discard(error_signature)
+        
+    def reset(self):
+        """Reset the guard state."""
+        self.remediation_stack.clear()
+        self.circular_detection.clear()
+        # Keep history for learning but reset counters periodically
+        if len(self.remediation_history) > 100:
+            self.remediation_history.clear()
 
 
 class ErrorDetector:
@@ -32,7 +82,7 @@ class ErrorDetector:
         self.error_history: List[DetectedError] = []
         self.is_monitoring = False
         
-        # Gemini integration
+        # Gemini integration - REQUIRED in the new architecture
         self.gemini_analyzer = None
         self.intelligent_retry = None
         if enable_gemini_analysis:
@@ -42,9 +92,13 @@ class ErrorDetector:
                     self.intelligent_retry = IntelligentRetry(self.gemini_analyzer)
                     logging.info("Gemini-powered error analysis and retry enabled")
                 else:
-                    logging.info("Gemini not available - using fallback error analysis")
+                    raise RuntimeError("Aigie requires Gemini for error analysis. Please configure GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT.")
             except Exception as e:
-                logging.warning(f"Failed to initialize Gemini: {e}")
+                logging.error(f"Failed to initialize Gemini: {e}")
+                raise RuntimeError(f"Aigie requires Gemini for error analysis. Initialization failed: {e}")
+        else:
+            logging.warning("Gemini analysis disabled - Aigie will not function properly without it")
+            raise RuntimeError("Aigie requires Gemini for error analysis. Please enable Gemini analysis.")
         
         # Error detection settings
         self.enable_timeout_detection = True
@@ -66,6 +120,12 @@ class ErrorDetector:
         self.operation_context_stack: List[Dict[str, Any]] = []
         self.active_operations: Dict[str, Dict[str, Any]] = {}
         self.remediation_cache: Dict[str, Dict[str, Any]] = {}
+        
+        # Self-healing remediation system
+        self.remediation_guard = RemediationGuard(max_depth=3)
+        self.remediation_failures: List[Dict[str, Any]] = []
+        self.enable_tiered_remediation = True
+        self.enable_self_healing = True
         
     def add_error_handler(self, handler: Callable[[DetectedError], None]):
         """Add a custom error handler."""
@@ -211,31 +271,35 @@ class ErrorDetector:
                     self._detect_timeout(execution_time, context)
     
     def _detect_error(self, exception: Exception, context: ErrorContext, perf_metrics: Optional[Any] = None):
-        """Detect and process an error."""
-        # Use Gemini for enhanced error analysis if available
-        if self.gemini_analyzer and self.gemini_analyzer.is_available():
-            try:
-                gemini_analysis = self.gemini_analyzer.analyze_error(exception, context)
-                
-                # Use Gemini's error classification
-                error_type = ErrorType(gemini_analysis.get("error_type", "RUNTIME_EXCEPTION"))
-                severity = ErrorSeverity(gemini_analysis.get("severity", "MEDIUM"))
-                suggestions = gemini_analysis.get("suggestions", [])
-                
-                # Store Gemini analysis for potential retry
-                context.gemini_analysis = gemini_analysis
-                
-            except Exception as e:
-                logging.warning(f"Gemini analysis failed, using fallback: {e}")
-                # Fall back to basic classification
-                error_type = classify_error(exception, context)
-                severity = determine_severity(error_type, context)
-                suggestions = self._generate_suggestions(error_type, exception, context)
-        else:
-            # Use basic error classification
-            error_type = classify_error(exception, context)
-            severity = determine_severity(error_type, context)
-            suggestions = self._generate_suggestions(error_type, exception, context)
+        """Detect and process an error using Gemini analysis."""
+        # Use Gemini for error analysis - this should always be available in the new architecture
+        if not self.gemini_analyzer or not self.gemini_analyzer.is_available():
+            raise RuntimeError("Gemini analyzer is required but not available")
+            
+        # Get Gemini analysis (this now has built-in retries)
+        gemini_analysis = self.gemini_analyzer.analyze_error(exception, context)
+        
+        # Convert Gemini's error classification to enum values
+        error_type_str = gemini_analysis.get("error_type", "runtime_exception")
+        severity_str = gemini_analysis.get("severity", "medium")
+        
+        # Convert to enum values with validation
+        try:
+            error_type = ErrorType(error_type_str.lower())
+        except ValueError:
+            logging.warning(f"Invalid error type from Gemini: {error_type_str}, using runtime_exception")
+            error_type = ErrorType.RUNTIME_EXCEPTION
+        
+        try:
+            severity = ErrorSeverity(severity_str.upper())
+        except ValueError:
+            logging.warning(f"Invalid severity from Gemini: {severity_str}, using MEDIUM")
+            severity = ErrorSeverity.MEDIUM
+        
+        suggestions = gemini_analysis.get("suggestions", [])
+        
+        # Store Gemini analysis for potential retry
+        context.gemini_analysis = gemini_analysis
         
         # Update context with performance metrics
         if perf_metrics:
@@ -264,11 +328,165 @@ class ErrorDetector:
     
     def _attempt_automatic_retry(self, exception: Exception, context: ErrorContext, 
                                 detected_error: DetectedError):
-        """Attempt automatic retry using Gemini-enhanced context with real-time remediation."""
-        if not self.intelligent_retry or not self.enable_real_time_remediation:
+        """Attempt automatic retry using Gemini-powered remediation."""
+        if not self.enable_real_time_remediation:
             return
         
+        # Create error signature for tracking
+        error_signature = f"{type(exception).__name__}_{context.component}_{context.method}"
+        
+        # Check if we can safely attempt remediation
+        if not self.remediation_guard.can_remediate(error_signature):
+            logging.info(f"Remediation guard blocked attempt for {error_signature}")
+            return
+        
+        # Start remediation tracking
+        self.remediation_guard.start_remediation(error_signature)
+        
         try:
+            return self._attempt_gemini_remediation(exception, context, detected_error, error_signature)
+                
+        except Exception as remediation_error:
+            logging.error(f"Gemini remediation failed: {remediation_error}")
+            # Store failure for analysis
+            self._store_remediation_failure(exception, context, remediation_error, error_signature)
+            
+        finally:
+            # Always end remediation tracking
+            self.remediation_guard.end_remediation(error_signature)
+    
+    
+    
+    def _attempt_gemini_remediation(self, exception: Exception, context: ErrorContext, 
+                                  detected_error: DetectedError, error_signature: str) -> Any:
+        """Tier 1: Gemini-powered remediation with prompt injection."""
+        if not self.gemini_analyzer or not self.gemini_analyzer.is_available():
+            raise Exception("Gemini analyzer not available")
+        
+        if not self.intelligent_retry:
+            raise Exception("Intelligent retry system not available")
+        
+        # Check if error is retryable based on Gemini analysis
+        if hasattr(context, 'gemini_analysis'):
+            is_retryable = context.gemini_analysis.get("is_retryable", True)
+            if not is_retryable:
+                raise Exception("Error marked as non-retryable by Gemini")
+        
+        # Get operation details for context-aware remediation
+        operation_id = f"{context.framework}_{context.component}_{context.method}"
+        stored_operation = self.get_stored_operation(operation_id)
+        
+        if not stored_operation:
+            raise Exception(f"No stored operation found for {operation_id}")
+        
+        # Generate specific remediation with prompt injection
+        remediation = self.gemini_analyzer.generate_prompt_injection_remediation(
+            exception, context, stored_operation, detected_error
+        )
+        
+        # Store remediation for potential use
+        context.remediation_strategy = remediation
+        
+        logging.info(f"Generated Gemini remediation with confidence: {remediation.get('confidence', 0)}")
+        
+        # Check if we should attempt retry based on confidence
+        confidence = remediation.get('confidence', 0)
+        if confidence < 0.5:  # Lower threshold for tier 1
+            raise Exception(f"Gemini confidence too low: {confidence}")
+        
+        # Attempt real-time remediation with prompt injection
+        return self._execute_real_time_remediation(exception, context, remediation, stored_operation)
+    
+    
+    def _self_heal_remediation_failure(self, original_exception: Exception, context: ErrorContext,
+                                     detected_error: DetectedError, remediation_error: Exception,
+                                     error_signature: str) -> Any:
+        """Self-healing mechanism when remediation itself fails."""
+        logging.info(f"🔧 SELF-HEALING: Attempting to recover from remediation failure for {error_signature}")
+        
+        # Try the most basic approach: just retry the original operation once
+        operation_id = f"{context.framework}_{context.component}_{context.method}"
+        stored_operation = self.get_stored_operation(operation_id)
+        
+        if stored_operation:
+            try:
+                # Wait a bit to let any transient issues resolve
+                time.sleep(2.0)
+                
+                operation = stored_operation['operation']
+                args = stored_operation['args']
+                kwargs = stored_operation['kwargs']
+                
+                # Try once with minimal modifications
+                result = operation(*args, **kwargs)
+                logging.info(f"✅ Self-healing succeeded - original operation worked after delay")
+                return result
+                
+            except Exception as final_error:
+                logging.error(f"Self-healing failed: {final_error}")
+                raise final_error
+        else:
+            raise Exception("No stored operation available for self-healing")
+    
+    
+    def _store_remediation_failure(self, exception: Exception, context: ErrorContext,
+                                 remediation_error: Exception, error_signature: str):
+        """Store remediation failure for analysis and learning."""
+        failure_info = {
+            'timestamp': datetime.now(),
+            'error_signature': error_signature,
+            'original_exception': str(exception),
+            'original_exception_type': type(exception).__name__,
+            'remediation_error': str(remediation_error),
+            'remediation_error_type': type(remediation_error).__name__,
+            'context': {
+                'framework': context.framework,
+                'component': context.component,
+                'method': context.method,
+            }
+        }
+        
+        self.remediation_failures.append(failure_info)
+        
+        # Keep only recent failures to prevent memory bloat
+        if len(self.remediation_failures) > 100:
+            self.remediation_failures = self.remediation_failures[-50:]
+        
+        logging.debug(f"Stored remediation failure: {error_signature}")
+    
+    def _store_comprehensive_failure(self, exception: Exception, context: ErrorContext,
+                                   tier_errors: List[Exception], error_signature: str):
+        """Store comprehensive failure information from all tiers."""
+        failure_info = {
+            'timestamp': datetime.now(),
+            'error_signature': error_signature,
+            'original_exception': str(exception),
+            'original_exception_type': type(exception).__name__,
+            'tier_failures': [
+                {
+                    'tier': i + 1,
+                    'error': str(error),
+                    'error_type': type(error).__name__
+                }
+                for i, error in enumerate(tier_errors)
+            ],
+            'context': {
+                'framework': context.framework,
+                'component': context.component,
+                'method': context.method,
+            }
+        }
+        
+        self.remediation_failures.append(failure_info)
+        logging.error(f"All remediation tiers failed for {error_signature}")
+    
+    def _attempt_legacy_remediation(self, exception: Exception, context: ErrorContext, 
+                                  detected_error: DetectedError) -> Any:
+        """Legacy remediation method for backward compatibility."""
+        # This is the old logic for when tiered remediation is disabled
+        if not self.intelligent_retry:
+            return
+        
             # Check if error is retryable based on Gemini analysis
             if hasattr(context, 'gemini_analysis'):
                 is_retryable = context.gemini_analysis.get("is_retryable", True)
@@ -304,9 +522,6 @@ class ErrorDetector:
                 
                 # Attempt real-time remediation with prompt injection
                 return self._execute_real_time_remediation(exception, context, remediation, stored_operation)
-                
-        except Exception as e:
-            logging.error(f"Failed to attempt automatic retry: {e}")
     
     def _execute_real_time_remediation(self, exception: Exception, context: ErrorContext, 
                                      remediation: Dict[str, Any], stored_operation: Dict[str, Any]) -> Any:
@@ -371,8 +586,13 @@ class ErrorDetector:
                                 context: ErrorContext, remediation: Dict[str, Any], 
                                 operation_type: str) -> str:
         """Generate enhanced prompt with specific error context and remediation hints."""
-        if not original_prompt:
-            original_prompt = "Please complete the requested task."
+        # Handle empty or None prompts more gracefully
+        if not original_prompt or original_prompt.strip() == "":
+            # Try to infer the task from context
+            if context.component and context.method:
+                original_prompt = f"Execute {context.component}.{context.method} operation"
+            else:
+                original_prompt = "Please complete the requested task."
         
         error_context = f"""
 ERROR CONTEXT:
@@ -652,68 +872,6 @@ Please complete the task now with this enhanced context:"""
             self.error_history.append(detected_error)
             self._notify_handlers(detected_error)
     
-    def _generate_suggestions(self, error_type: ErrorType, exception: Optional[Exception], context: ErrorContext) -> List[str]:
-        """Generate suggestions for fixing the error."""
-        suggestions = []
-        
-        if error_type == ErrorType.TIMEOUT:
-            suggestions.extend([
-                "Increase timeout configuration",
-                "Optimize the execution logic",
-                "Check for blocking operations",
-                "Consider asynchronous execution"
-            ])
-        
-        elif error_type == ErrorType.API_ERROR:
-            suggestions.extend([
-                "Check API endpoint configuration",
-                "Verify authentication credentials",
-                "Review rate limiting settings",
-                "Check network connectivity"
-            ])
-        
-        elif error_type == ErrorType.MEMORY_ERROR:
-            suggestions.extend([
-                "Check for memory leaks in loops",
-                "Review large data structures",
-                "Consider streaming for large datasets",
-                "Monitor memory usage patterns"
-            ])
-        
-        elif error_type == ErrorType.STATE_ERROR:
-            suggestions.extend([
-                "Validate state transitions",
-                "Check data type consistency",
-                "Review state initialization",
-                "Add state validation checks"
-            ])
-        
-        elif error_type == ErrorType.SLOW_EXECUTION:
-            suggestions.extend([
-                "Profile the execution path",
-                "Optimize database queries",
-                "Consider caching strategies",
-                "Review algorithm complexity"
-            ])
-        
-        # Framework-specific suggestions
-        if context.framework == "langchain":
-            suggestions.extend([
-                "Check chain configuration",
-                "Review tool implementations",
-                "Verify memory setup",
-                "Check agent reasoning logic"
-            ])
-        
-        elif context.framework == "langgraph":
-            suggestions.extend([
-                "Review node implementations",
-                "Check state graph configuration",
-                "Verify checkpoint settings",
-                "Review transition logic"
-            ])
-        
-        return suggestions
     
     def _notify_handlers(self, detected_error: DetectedError):
         """Notify all registered error handlers."""
