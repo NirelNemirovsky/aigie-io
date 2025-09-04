@@ -825,58 +825,89 @@ Please complete the task now with this enhanced context:"""
 class AsyncErrorDetector(ErrorDetector):
     """Asynchronous version of the error detector for async operations."""
     
-    async def monitor_execution_async(self, framework: str, component: str, method: str, **kwargs):
+    def monitor_execution_async(self, framework: str, component: str, method: str, **kwargs):
         """Async context manager for monitoring execution."""
-        if not self.is_monitoring:
-            yield
-            return
+        return AsyncExecutionMonitor(self, framework, component, method, **kwargs)
+
+
+class AsyncExecutionMonitor:
+    """Async context manager for monitoring execution."""
+    
+    def __init__(self, error_detector: AsyncErrorDetector, framework: str, component: str, method: str, **kwargs):
+        self.error_detector = error_detector
+        self.framework = framework
+        self.component = component
+        self.method = method
+        self.kwargs = kwargs
+        self.context = None
+        self.perf_metrics = None
+        self.start_time = None
+    
+    async def __aenter__(self):
+        """Enter the async context manager."""
+        if not self.error_detector.is_monitoring:
+            return self
+        
+        self.start_time = datetime.now()
         
         # Start performance monitoring
-        perf_metrics = None
-        if self.performance_monitor:
-            perf_metrics = self.performance_monitor.start_monitoring(component, method)
+        if self.error_detector.performance_monitor:
+            self.perf_metrics = self.error_detector.performance_monitor.start_monitoring(
+                self.component, self.method
+            )
         
         # Create error context
-        context = ErrorContext(
-            timestamp=datetime.now(),
-            framework=framework,
-            component=component,
-            method=method,
-            input_data=kwargs.get('input_data'),
-            state=kwargs.get('state')
+        self.context = ErrorContext(
+            timestamp=self.start_time,
+            framework=self.framework,
+            component=self.component,
+            method=self.method,
+            input_data=self.kwargs.get('input_data'),
+            state=self.kwargs.get('state')
         )
         
-        start_time = datetime.now()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Exit the async context manager."""
+        if not self.error_detector.is_monitoring or not self.context:
+            return False
         
         try:
-            yield
-            
-            # Check for performance issues
-            if perf_metrics:
-                self.performance_monitor.stop_monitoring(perf_metrics)
-                performance_warnings = self.performance_monitor.check_performance_issues(perf_metrics)
+            if exc_type is not None:
+                # Detect and handle the error
+                detected_error = self.error_detector._detect_error(exc_val, self.context, self.perf_metrics)
                 
-                for warning in performance_warnings:
-                    self._detect_performance_issue(warning, context, perf_metrics)
+                # Try automatic retry if enabled and Gemini is available
+                if self.error_detector.enable_automatic_retry and self.error_detector.intelligent_retry:
+                    try:
+                        self.error_detector._attempt_automatic_retry(exc_val, self.context, detected_error)
+                    except Exception as retry_error:
+                        logging.warning(f"Automatic retry failed: {retry_error}")
+                
+                # Don't suppress the exception
+                return False
+            else:
+                # Check for performance issues
+                if self.perf_metrics and self.error_detector.performance_monitor:
+                    self.error_detector.performance_monitor.stop_monitoring(self.perf_metrics)
+                    performance_warnings = self.error_detector.performance_monitor.check_performance_issues(self.perf_metrics)
                     
-        except Exception as e:
-            # Detect and handle the error
-            detected_error = self._detect_error(e, context, perf_metrics)
-            
-            # Try automatic retry if enabled and Gemini is available
-            if self.enable_automatic_retry and self.intelligent_retry:
-                try:
-                    self._attempt_automatic_retry(e, context, detected_error)
-                except Exception as retry_error:
-                    logging.warning(f"Automatic retry failed: {retry_error}")
-            
-            raise
+                    for warning in performance_warnings:
+                        self.error_detector._detect_performance_issue(warning, self.context, self.perf_metrics)
+                
+                return False
+                
         finally:
             # Check for timeout
-            if self.enable_timeout_detection:
-                execution_time = (datetime.now() - start_time).total_seconds()
-                if execution_time > self.timeout_threshold:
-                    self._detect_timeout(execution_time, context)
+            if self.error_detector.enable_timeout_detection and self.start_time:
+                execution_time = (datetime.now() - self.start_time).total_seconds()
+                if execution_time > self.error_detector.timeout_threshold:
+                    self.error_detector._detect_timeout(execution_time, self.context)
+            
+            # Clean up performance monitoring
+            if self.perf_metrics and self.error_detector.performance_monitor:
+                self.error_detector.performance_monitor.stop_monitoring(self.perf_metrics)
     
     async def _notify_handlers_async(self, detected_error: DetectedError):
         """Notify all registered error handlers asynchronously."""

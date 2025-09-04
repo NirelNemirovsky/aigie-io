@@ -25,8 +25,8 @@ This example demonstrates the most advanced features of modern LangGraph with co
 Requirements:
 - LangGraph latest version with all features
 - SQLite for advanced checkpointing
-- Model provider API key (OpenAI/Anthropic/Google)
-- GEMINI_API_KEY for enhanced error analysis
+- GEMINI_API_KEY for model and enhanced error analysis
+- langchain-google-genai package
 """
 
 import os
@@ -42,7 +42,7 @@ from pathlib import Path
 # Add parent directory for aigie imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from aigie.core.error_detector import ErrorDetector
+from aigie.core.error_detector import ErrorDetector, AsyncErrorDetector
 from aigie.interceptors.langchain import LangChainInterceptor
 from aigie.interceptors.langgraph import LangGraphInterceptor
 from aigie.reporting.logger import AigieLogger
@@ -89,8 +89,8 @@ class ResearchState(TypedDict):
 class AdvancedConfig:
     """Configuration for advanced features."""
     # Model settings
-    PRIMARY_MODEL: str = "openai:gpt-4o"
-    FALLBACK_MODEL: str = "anthropic:claude-3-sonnet-20240229"
+    PRIMARY_MODEL: str = "google:gemini-1.5-flash"
+    FALLBACK_MODEL: str = "google:gemini-1.5-pro"
     
     # Human-in-the-loop settings
     REQUIRE_HUMAN_APPROVAL: bool = True
@@ -294,11 +294,10 @@ async def create_advanced_research_workflow(config: AdvancedConfig, lg_intercept
     """Create an advanced research workflow with all modern LangGraph features."""
     try:
         # Import all required LangGraph components
-        from langchain import init_chat_model
+        from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.tools import tool
         from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
         from langgraph.graph import StateGraph, START, END
-        from langgraph.checkpoint.sqlite import SqliteSaver
         from langgraph.checkpoint.memory import MemorySaver
         from langgraph.prebuilt import ToolNode
         from langgraph.types import Command
@@ -307,18 +306,32 @@ async def create_advanced_research_workflow(config: AdvancedConfig, lg_intercept
         
         # Initialize model
         try:
-            model = init_chat_model(config.PRIMARY_MODEL, temperature=0.1)
-            logger.info(f"✅ Primary model: {config.PRIMARY_MODEL}")
-        except Exception:
-            model = init_chat_model(config.FALLBACK_MODEL, temperature=0.1)
-            logger.info(f"✅ Fallback model: {config.FALLBACK_MODEL}")
+            # Parse model string (e.g., "google:gemini-1.5-flash" -> ChatGoogleGenerativeAI with gemini-1.5-flash)
+            if config.PRIMARY_MODEL.startswith("google:"):
+                model_name = config.PRIMARY_MODEL.split(":", 1)[1]
+                model = ChatGoogleGenerativeAI(model=model_name, temperature=0.1)
+                logger.info(f"✅ Primary model: {config.PRIMARY_MODEL}")
+            else:
+                # Fallback to default Gemini model
+                model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+                logger.info(f"✅ Using fallback model: gemini-2.5-flash")
+        except Exception as e:
+            # Fallback to default Gemini model
+            model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+            logger.info(f"✅ Using fallback model: gemini-2.5-flash (error: {e})")
         
         # Create advanced checkpointer
         if config.USE_SQLITE_CHECKPOINT:
-            # Ensure checkpoint directory exists
-            Path(config.CHECKPOINT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
-            checkpointer = SqliteSaver.from_conn_string(config.CHECKPOINT_DB_PATH)
-            logger.info(f"✅ SQLite checkpointer: {config.CHECKPOINT_DB_PATH}")
+            try:
+                from langgraph.checkpoint.sqlite import SqliteSaver
+                # Ensure checkpoint directory exists
+                Path(config.CHECKPOINT_DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+                checkpointer = SqliteSaver.from_conn_string(config.CHECKPOINT_DB_PATH)
+                logger.info(f"✅ SQLite checkpointer: {config.CHECKPOINT_DB_PATH}")
+            except ImportError:
+                logger.info("⚠️ SQLite checkpointing not available, using memory checkpointing")
+                checkpointer = MemorySaver()
+                logger.info("✅ Memory checkpointer (fallback)")
         else:
             checkpointer = MemorySaver()
             logger.info("✅ Memory checkpointer")
@@ -775,7 +788,7 @@ async def main():
         # Initialize enhanced aigie monitoring
         print("\n📊 Initializing Enhanced Aigie System...")
         
-        error_detector = ErrorDetector(
+        error_detector = AsyncErrorDetector(
             enable_performance_monitoring=True,
             enable_resource_monitoring=True,
             enable_gemini_analysis=True
@@ -933,8 +946,8 @@ async def main():
         logger.error(f"Advanced demo failed: {e}")
         print(f"\n❌ Advanced demo failed: {e}")
         print(f"\n🔧 Troubleshooting:")
-        print(f"• Check API keys: OPENAI_API_KEY, ANTHROPIC_API_KEY")
-        print(f"• Install latest: pip install -U langchain langgraph")
+        print(f"• Check API keys: GEMINI_API_KEY")
+        print(f"• Install latest: pip install -U langchain langgraph langchain-google-genai")
         print(f"• Ensure SQLite permissions for checkpointing")
         print(f"• Verify network connectivity for tools")
 

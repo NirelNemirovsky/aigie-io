@@ -102,56 +102,56 @@ class LangChainInterceptor:
         try:
             from langchain_openai import ChatOpenAI
             classes_to_patch['ChatOpenAI'] = ChatOpenAI
-        except ImportError:
-            self.logger.log_system_event("ChatOpenAI not available")
+        except Exception as e:
+            self.logger.log_system_event(f"ChatOpenAI not available: {e}")
         
         try:
             from langchain_anthropic import ChatAnthropic
             classes_to_patch['ChatAnthropic'] = ChatAnthropic
-        except ImportError:
-            self.logger.log_system_event("ChatAnthropic not available")
+        except Exception as e:
+            self.logger.log_system_event(f"ChatAnthropic not available: {e}")
         
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
             classes_to_patch['ChatGoogleGenerativeAI'] = ChatGoogleGenerativeAI
-        except ImportError:
-            self.logger.log_system_event("ChatGoogleGenerativeAI not available")
+        except Exception as e:
+            self.logger.log_system_event(f"ChatGoogleGenerativeAI not available: {e}")
         
         try:
             from langchain_community.chat_models import ChatOllama
             classes_to_patch['ChatOllama'] = ChatOllama
-        except ImportError:
-            self.logger.log_system_event("ChatOllama not available")
+        except Exception as e:
+            self.logger.log_system_event(f"ChatOllama not available: {e}")
         
         # Legacy LLMs
         try:
             from langchain_openai import OpenAI
             classes_to_patch['OpenAI'] = OpenAI
-        except ImportError:
+        except Exception as e:
             try:
                 from langchain.llms import OpenAI
                 classes_to_patch['OpenAI'] = OpenAI
-            except ImportError:
-                self.logger.log_system_event("OpenAI LLM not available")
+            except Exception as e2:
+                self.logger.log_system_event(f"OpenAI LLM not available: {e2}")
         
         try:
             from langchain.llms.base import LLM
             classes_to_patch['LLM'] = LLM
-        except ImportError:
-            self.logger.log_system_event("Base LLM not available")
+        except Exception as e:
+            self.logger.log_system_event(f"Base LLM not available: {e}")
         
         # Modern Tool System
         try:
             from langchain_core.tools import BaseTool, StructuredTool
             classes_to_patch['BaseTool'] = BaseTool
             classes_to_patch['StructuredTool'] = StructuredTool
-        except ImportError:
+        except Exception as e:
             try:
                 from langchain.tools import BaseTool, StructuredTool
                 classes_to_patch['BaseTool'] = BaseTool
                 classes_to_patch['StructuredTool'] = StructuredTool
-            except ImportError:
-                self.logger.log_system_event("Modern tool classes not available")
+            except Exception as e2:
+                self.logger.log_system_event(f"Modern tool classes not available: {e2}")
         
         # LCEL Runnable Components
         try:
@@ -166,8 +166,8 @@ class LangChainInterceptor:
                 'RunnableSequence': RunnableSequence,
                 'RunnableBranch': RunnableBranch,
             })
-        except ImportError:
-            self.logger.log_system_event("LCEL Runnable components not available")
+        except Exception as e:
+            self.logger.log_system_event(f"LCEL Runnable components not available: {e}")
         
         # Output Parsers
         try:
@@ -177,7 +177,7 @@ class LangChainInterceptor:
                 'StrOutputParser': StrOutputParser,
                 'PydanticOutputParser': PydanticOutputParser,
             })
-        except ImportError:
+        except Exception as e:
             try:
                 from langchain.output_parsers import BaseOutputParser, StrOutputParser, PydanticOutputParser
                 classes_to_patch.update({
@@ -185,8 +185,8 @@ class LangChainInterceptor:
                     'StrOutputParser': StrOutputParser,
                     'PydanticOutputParser': PydanticOutputParser,
                 })
-            except ImportError:
-                self.logger.log_system_event("Output parsers not available")
+            except Exception as e2:
+                self.logger.log_system_event(f"Output parsers not available: {e2}")
         
         # Retrieval Components
         try:
@@ -196,15 +196,15 @@ class LangChainInterceptor:
                 'BaseRetriever': BaseRetriever,
                 'VectorStoreRetriever': VectorStoreRetriever,
             })
-        except ImportError:
-            self.logger.log_system_event("Retrieval components not available")
+        except Exception as e:
+            self.logger.log_system_event(f"Retrieval components not available: {e}")
         
         # Modern Agent System
         try:
             from langchain.agents import AgentExecutor
             classes_to_patch['AgentExecutor'] = AgentExecutor
-        except ImportError:
-            self.logger.log_system_event("AgentExecutor not available")
+        except Exception as e:
+            self.logger.log_system_event(f"AgentExecutor not available: {e}")
         
         # Legacy support
         try:
@@ -214,8 +214,8 @@ class LangChainInterceptor:
                 'LLMChain': LLMChain,
                 'Agent': Agent,
             })
-        except ImportError:
-            self.logger.log_system_event("Legacy LangChain classes not available")
+        except Exception as e:
+            self.logger.log_system_event(f"Legacy LangChain classes not available: {e}")
         
         # Patch all available classes
         for class_name, cls in classes_to_patch.items():
@@ -231,93 +231,160 @@ class LangChainInterceptor:
         
         for method_name in methods_to_patch:
             if hasattr(cls, method_name):
-                original_method = getattr(cls, method_name)
+                # Get the method descriptor from the class
+                method_descriptor = getattr(cls, method_name)
                 
-                # Store original method
+                # Store original method descriptor
                 key = f"{cls.__name__}.{method_name}"
-                self.original_methods[key] = original_method
+                self.original_methods[key] = method_descriptor
                 
                 # Create patched method
-                if inspect.iscoroutinefunction(original_method):
-                    patched_method = self._create_async_patched_method(original_method, class_name, method_name)
+                if inspect.iscoroutinefunction(method_descriptor):
+                    patched_method = self._create_async_patched_method(method_descriptor, class_name, method_name)
                 else:
-                    patched_method = self._create_sync_patched_method(original_method, class_name, method_name)
+                    patched_method = self._create_sync_patched_method(method_descriptor, class_name, method_name)
                 
                 # Apply the patch
                 setattr(cls, method_name, patched_method)
         
-        self.intercepted_classes.add(class_name)
+        self.intercepted_classes.add(cls)
         self.logger.log_system_event(f"Patched {class_name} methods: {methods_to_patch}")
     
     def _create_sync_patched_method(self, original_method: Callable, class_name: str, method_name: str):
         """Create a synchronous patched method."""
-        @functools.wraps(original_method)
-        def patched_method(self_instance, *args, **kwargs):
-            # Create error context
-            context = ErrorContext(
-                timestamp=datetime.now(),
-                framework="langchain",
-                component=class_name,
-                method=method_name,
-                input_data=self._extract_input_data(args, kwargs, method_name)
-            )
-            
-            # Store operation for potential retry
-            operation_id = f"{context.framework}_{context.component}_{context.method}"
-            self.error_detector.store_operation_for_retry(
-                operation_id, original_method, (self_instance,) + args, kwargs, context
-            )
-            
-            # Monitor execution
-            with self.error_detector.monitor_execution(
-                framework="langchain",
-                component=class_name,
-                method=method_name,
-                input_data=context.input_data
-            ):
-                try:
-                    # Call original method
-                    result = original_method(self_instance, *args, **kwargs)
-                    return result
-                except Exception as e:
-                    # Error will be detected by the context manager
-                    raise
+        # Only use functools.wraps if original_method is actually callable and has the required attributes
+        if callable(original_method) and hasattr(original_method, '__name__'):
+            @functools.wraps(original_method)
+            def patched_method(self_instance, *args, **kwargs):
+                # Create error context
+                context = ErrorContext(
+                    timestamp=datetime.now(),
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=self._extract_input_data(args, kwargs, method_name)
+                )
+                
+                # Store operation for potential retry
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                self.error_detector.store_operation_for_retry(
+                    operation_id, original_method, (self_instance,) + args, kwargs, context
+                )
+                
+                # Monitor execution
+                with self.error_detector.monitor_execution(
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=context.input_data
+                ):
+                    try:
+                        # Call original method
+                        result = original_method(self_instance, *args, **kwargs)
+                        return result
+                    except Exception as e:
+                        # Error will be detected by the context manager
+                        raise
+        else:
+            def patched_method(self_instance, *args, **kwargs):
+                # Create error context
+                context = ErrorContext(
+                    timestamp=datetime.now(),
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=self._extract_input_data(args, kwargs, method_name)
+                )
+                
+                # Store operation for potential retry
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                self.error_detector.store_operation_for_retry(
+                    operation_id, original_method, (self_instance,) + args, kwargs, context
+                )
+                
+                # Monitor execution
+                with self.error_detector.monitor_execution(
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=context.input_data
+                ):
+                    try:
+                        # Call original method
+                        result = original_method(self_instance, *args, **kwargs)
+                        return result
+                    except Exception as e:
+                        # Error will be detected by the context manager
+                        raise
         
         return patched_method
     
     def _create_async_patched_method(self, original_method: Callable, class_name: str, method_name: str):
         """Create an asynchronous patched method."""
-        @functools.wraps(original_method)
-        async def patched_method(self_instance, *args, **kwargs):
-            # Create error context
-            context = ErrorContext(
-                timestamp=datetime.now(),
-                framework="langchain",
-                component=class_name,
-                method=method_name,
-                input_data=self._extract_input_data(args, kwargs, method_name)
-            )
-            
-            # Store operation for potential retry
-            operation_id = f"{context.framework}_{context.component}_{context.method}"
-            self.error_detector.store_operation_for_retry(
-                operation_id, original_method, (self_instance,) + args, kwargs, context
-            )
-            
-            # Monitor execution
-            async with self.error_detector.monitor_execution_async(
-                framework="langchain",
-                component=class_name,
-                method=method_name,
-                input_data=context.input_data
-            ):
-                try:
-                    # Call original method
-                    result = await original_method(self_instance, *args, **kwargs)
-                    return result
-                except Exception as e:
-                    # Error will be detected by the context manager
-                    raise
+        # Only use functools.wraps if original_method is actually callable and has the required attributes
+        if callable(original_method) and hasattr(original_method, '__name__'):
+            @functools.wraps(original_method)
+            async def patched_method(self_instance, *args, **kwargs):
+                # Create error context
+                context = ErrorContext(
+                    timestamp=datetime.now(),
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=self._extract_input_data(args, kwargs, method_name)
+                )
+                
+                # Store operation for potential retry
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                self.error_detector.store_operation_for_retry(
+                    operation_id, original_method, (self_instance,) + args, kwargs, context
+                )
+                
+                # Monitor execution
+                async with self.error_detector.monitor_execution_async(
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=context.input_data
+                ):
+                    try:
+                        # Call original method
+                        result = await original_method(self_instance, *args, **kwargs)
+                        return result
+                    except Exception as e:
+                        # Error will be detected by the context manager
+                        raise
+        else:
+            async def patched_method(self_instance, *args, **kwargs):
+                # Create error context
+                context = ErrorContext(
+                    timestamp=datetime.now(),
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=self._extract_input_data(args, kwargs, method_name)
+                )
+                
+                # Store operation for potential retry
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                self.error_detector.store_operation_for_retry(
+                    operation_id, original_method, (self_instance,) + args, kwargs, context
+                )
+                
+                # Monitor execution
+                async with self.error_detector.monitor_execution_async(
+                    framework="langchain",
+                    component=class_name,
+                    method=method_name,
+                    input_data=context.input_data
+                ):
+                    try:
+                        # Call original method
+                        result = await original_method(self_instance, *args, **kwargs)
+                        return result
+                    except Exception as e:
+                        # Error will be detected by the context manager
+                        raise
         
         return patched_method
     
@@ -348,8 +415,12 @@ class LangChainInterceptor:
                 
                 # Find the class
                 for cls in self.intercepted_classes:
-                    if cls.__name__ == class_name:
-                        setattr(cls, method_name, original_method)
+                    if hasattr(cls, '__name__') and cls.__name__ == class_name:
+                        # Ensure original_method is actually callable before restoring
+                        if callable(original_method):
+                            setattr(cls, method_name, original_method)
+                        else:
+                            self.logger.log_system_event(f"Original method for {key} is not callable: {type(original_method)}")
                         break
                         
             except Exception as e:
@@ -367,17 +438,20 @@ class LangChainInterceptor:
             
             for method_name in methods_to_patch:
                 if hasattr(chain_instance, method_name):
-                    original_method = getattr(chain_instance, method_name)
+                    method_descriptor = getattr(chain_instance, method_name)
+                    
+                    # Debug logging to see what we're storing
+                    self.logger.log_system_event(f"Storing instance method {chain_instance.__class__.__name__}.{method_name}: type={type(method_descriptor)}, callable={callable(method_descriptor)}")
                     
                     # Store original method
                     key = f"{chain_instance.__class__.__name__}.{method_name}"
-                    self.original_methods[key] = original_method
+                    self.original_methods[key] = method_descriptor
                     
                     # Create patched method
-                    if inspect.iscoroutinefunction(original_method):
-                        patched_method = self._create_async_patched_method(original_method, class_name, method_name)
+                    if inspect.iscoroutinefunction(method_descriptor):
+                        patched_method = self._create_async_patched_method(method_descriptor, class_name, method_name)
                     else:
-                        patched_method = self._create_sync_patched_method(original_method, class_name, method_name)
+                        patched_method = self._create_sync_patched_method(method_descriptor, class_name, method_name)
                     
                     # Apply the patch
                     setattr(chain_instance, method_name, patched_method)
