@@ -8,15 +8,17 @@
 
 > **AI Agent Runtime Error Detection & Remediation**
 
-Aigie is a real-time error detection and monitoring system for LangChain and LangGraph applications with **intelligent error remediation capabilities**. It provides seamless integration without requiring additional code from users, automatically detecting, analyzing, and fixing runtime errors as they occur.
+Aigie is a real-time error detection and monitoring system for LangChain and LangGraph applications with **intelligent error remediation capabilities** and a revolutionary **LLM-as-Judge validation system**. It provides seamless integration without requiring additional code from users, automatically detecting, analyzing, validating, and fixing runtime errors as they occur.
 
 ## ✨ Features
 
 - **🚀 Zero-Code Integration** - Automatically detects and wraps LangChain/LangGraph applications
 - **⚡ Real-time Error Detection** - Immediate error reporting with classification and severity assessment
+- **🧠 LLM-as-Judge Validation** - Revolutionary AI-powered step validation using 6 validation strategies
 - **🤖 Gemini-Powered Analysis** - AI-powered error classification and intelligent remediation
 - **🔄 Intelligent Retry System** - Automatic retry with enhanced context from Gemini
 - **💉 Prompt Injection Remediation** - Actually fixes errors by injecting guidance into AI agent prompts
+- **🔧 Auto-Correction System** - Automatically fixes invalid steps using multiple correction strategies
 - **📊 Comprehensive Monitoring** - Covers execution, API, state, and memory errors
 - **📈 Performance Insights** - Track execution time, memory usage, and resource consumption
 - **🧠 Pattern Learning** - Learns from successful and failed operations to improve over time
@@ -60,6 +62,62 @@ app = graph.compile()
 
 # Run normally - Aigie monitors in background
 result = app.invoke({"input": "Hello"})
+```
+
+## 🧠 LLM-as-Judge Validation System
+
+Aigie's revolutionary **LLM-as-Judge** validation system provides real-time validation and correction of AI agent execution steps. This system ensures agents execute correctly and efficiently by continuously monitoring, validating, and automatically correcting their behavior.
+
+### 🎯 Validation Strategies
+
+The system uses **6 comprehensive validation strategies** to judge each execution step:
+
+| Strategy | Description |
+|----------|-------------|
+| **Goal Alignment** | Does this step advance the agent's stated goal? |
+| **Logical Consistency** | Is the step logically sound given the context? |
+| **Output Quality** | Will this likely produce appropriate output? |
+| **State Coherence** | Does this maintain consistent agent state? |
+| **Safety Compliance** | Does this follow safety guidelines? |
+| **Performance Optimality** | Is this the most efficient approach? |
+
+### 🔧 Auto-Correction System
+
+When validation fails, Aigie automatically attempts correction using multiple strategies:
+
+- **Parameter Adjustment** - Fix incorrect parameters
+- **Prompt Refinement** - Improve prompts and input data
+- **Tool Substitution** - Replace wrong tools with correct ones
+- **Logic Repair** - Fix logical errors in reasoning
+- **Goal Realignment** - Align steps with agent goals
+- **State Restoration** - Fix corrupted agent state
+
+### 📊 Advanced Features
+
+- **Parallel Validation** - Multiple strategies run simultaneously for faster processing
+- **Pattern Learning** - Learns from validation history to improve future validations
+- **Intelligent Caching** - Caches validation results for similar steps
+- **Adaptive Thresholds** - Dynamically adjusts validation criteria based on performance
+- **Rich Context Capture** - Captures comprehensive execution context for intelligent validation
+
+### Example Usage
+
+```python
+from aigie import auto_integrate
+from aigie.core.validation import ValidationEngine
+
+# Auto-integration enables LLM-as-Judge validation automatically
+auto_integrate()
+
+# Your existing code works unchanged - validation happens automatically
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnableSequence
+
+prompt = PromptTemplate.from_template("Tell me a joke about {topic}")
+chain = prompt | llm
+
+# Each step is automatically validated and corrected if needed
+result = chain.invoke({"topic": "programming"})
 ```
 
 ## 🤖 Gemini Integration
@@ -144,12 +202,27 @@ aigie gemini --test
 aigie/
 ├── core/                    # Core functionality
 │   ├── types/              # Type definitions and data structures
-│   ├── validation/         # Runtime validation system
+│   │   ├── error_types.py      # Error classification and severity
+│   │   └── validation_types.py # Validation data structures
+│   ├── validation/         # 🧠 LLM-as-Judge validation system
+│   │   ├── runtime_validator.py     # LLM-as-Judge implementation
+│   │   ├── step_corrector.py        # Auto-correction system
+│   │   ├── validation_engine.py     # Main orchestrator
+│   │   ├── validation_pipeline.py   # Multi-stage validation
+│   │   ├── validation_monitor.py    # Performance monitoring
+│   │   └── context_extractor.py     # Context inference
 │   ├── error_handling/     # Error detection and handling
+│   │   ├── error_detector.py        # Main error detection engine
+│   │   └── intelligent_retry.py     # Smart retry system
 │   ├── monitoring/         # Performance and resource monitoring
+│   │   └── monitoring.py           # Resource monitoring
 │   ├── ai/                 # AI/LLM components
+│   │   └── gemini_analyzer.py      # Gemini-powered analysis
 │   └── utils/              # Utility functions
 ├── interceptors/           # Framework-specific interceptors
+│   ├── langchain.py        # LangChain interceptor
+│   ├── langgraph.py        # LangGraph interceptor
+│   └── validation_interceptor.py # Enhanced interceptor with validation
 ├── reporting/              # Error reporting and logging
 ├── utils/                  # Utility functions
 ├── cli.py                  # Command-line interface
@@ -239,12 +312,15 @@ mypy aigie/
 ## 📈 Current Status
 
 ✅ **Fully Implemented and Working**:
-- Core error detection engine with Gemini integration
-- Real-time error remediation with prompt injection
-- LangChain and LangGraph interceptors
-- Intelligent retry system with pattern learning
-- CLI interface with Gemini setup
-- Working examples with real AI integration
+- **🧠 LLM-as-Judge Validation System** - Revolutionary AI-powered step validation with 6 validation strategies
+- **🔧 Auto-Correction System** - Automatic step correction using multiple correction strategies
+- **⚡ Core Error Detection Engine** - Real-time error detection with Gemini integration
+- **💉 Prompt Injection Remediation** - Real-time error remediation with prompt injection
+- **🔗 LangChain and LangGraph Interceptors** - Seamless framework integration
+- **🔄 Intelligent Retry System** - Smart retry with pattern learning
+- **📊 Performance Monitoring** - Comprehensive metrics and reporting
+- **🛠️ CLI Interface** - Complete command-line interface with Gemini setup
+- **📚 Working Examples** - Real AI integration examples and demos
 
 ## 🤝 Contributing
 
