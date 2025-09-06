@@ -12,11 +12,12 @@ from unittest.mock import Mock, patch
 # Add the parent directory to the path so we can import aigie
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from aigie.core.validation_types import ExecutionStep, ValidationResult, ValidationStatus, RiskLevel
-from aigie.core.gemini_analyzer import GeminiAnalyzer
-from aigie.core.runtime_validator import RuntimeValidator
-from aigie.core.step_corrector import StepCorrector
-from aigie.core.validation_engine import ValidationEngine
+from aigie.core.types.validation_types import ExecutionStep, ValidationResult, ValidationStatus, RiskLevel
+from aigie.core.types.error_types import ErrorContext
+from aigie.core.ai.gemini_analyzer import GeminiAnalyzer
+from aigie.core.validation.runtime_validator import RuntimeValidator
+from aigie.core.validation.step_corrector import StepCorrector
+from aigie.core.validation.validation_engine import ValidationEngine
 
 
 class TestValidationTypes(unittest.TestCase):
@@ -58,7 +59,7 @@ class TestValidationTypes(unittest.TestCase):
         """Test ValidationStatus enum."""
         self.assertIn(ValidationStatus.VALID, ValidationStatus)
         self.assertIn(ValidationStatus.INVALID, ValidationStatus)
-        self.assertIn(ValidationStatus.UNCERTAIN, ValidationStatus)
+        self.assertIn(ValidationStatus.PENDING, ValidationStatus)
     
     def test_risk_level_enum(self):
         """Test RiskLevel enum."""
@@ -85,7 +86,7 @@ class TestGeminiAnalyzer(unittest.TestCase):
         availability = self.analyzer.is_available()
         self.assertIsInstance(availability, bool)
     
-    @patch('aigie.core.gemini_analyzer.genai')
+    @patch('aigie.core.ai.gemini_analyzer.genai')
     def test_analyze_with_mock(self, mock_genai):
         """Test analyzer with mocked Gemini API."""
         # Mock the Gemini response
@@ -94,8 +95,13 @@ class TestGeminiAnalyzer(unittest.TestCase):
         mock_model.generate_content.return_value.text = "Test analysis"
         mock_genai.GenerativeModel.return_value = mock_model
         
+        # Mock the analyzer to be initialized
+        self.analyzer.is_initialized = True
+        self.analyzer.model = mock_model
+        self.analyzer.backend = "api_key"  # Set a valid backend
+        
         # Test analysis
-        result = self.analyzer.analyze("Test prompt")
+        result = self.analyzer.analyze_error(Exception("Test error"), ErrorContext("test", "test", "test", "test"))
         self.assertIsNotNone(result)
 
 
@@ -156,7 +162,7 @@ class TestStepCorrector(unittest.TestCase):
         self.assertIsNotNone(self.corrector)
         self.assertEqual(self.corrector.gemini_analyzer, self.analyzer)
     
-    def test_correct_step(self):
+    async def test_correct_step(self):
         """Test step correction."""
         step = ExecutionStep(
             framework="langchain",
@@ -167,15 +173,25 @@ class TestStepCorrector(unittest.TestCase):
             step_reasoning="Test reasoning"
         )
         
+        # Create a mock validation result
+        validation_result = ValidationResult(
+            is_valid=False,
+            confidence=0.3,
+            reasoning="Wrong tool for the task",
+            risk_level=RiskLevel.MEDIUM
+        )
+        
         # Mock the correction response
-        corrected_step = step.copy()
-        corrected_step.component = "ChatOpenAI"
+        self.analyzer.analyze_error.return_value = {
+            "primary_issue": "tool_mismatch",
+            "suggested_fix": "Use ChatOpenAI for answering questions",
+            "confidence": 0.8
+        }
         
-        self.analyzer.analyze.return_value = "Use ChatOpenAI for answering questions"
+        result = await self.corrector.correct_step(step, validation_result)
         
-        result = self.corrector.correct_step(step, "Wrong tool for the task")
-        
-        self.assertIsInstance(result, ExecutionStep)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.is_successful)
 
 
 class TestValidationEngine(unittest.TestCase):

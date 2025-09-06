@@ -10,9 +10,9 @@ import os
 # Add the parent directory to the path so we can import aigie
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from aigie.core.error_types import ErrorType, ErrorSeverity, ErrorContext, DetectedError, classify_error, determine_severity
-from aigie.core.monitoring import PerformanceMonitor, ResourceMonitor
-from aigie.core.error_detector import ErrorDetector
+from aigie.core.types.error_types import ErrorType, ErrorSeverity, ErrorContext, DetectedError, classify_error, determine_severity
+from aigie.core.monitoring.monitoring import PerformanceMonitor, ResourceMonitor
+from aigie.core.error_handling.error_detector import ErrorDetector
 from aigie.reporting.logger import AigieLogger
 from aigie.utils.config import AigieConfig
 
@@ -185,7 +185,7 @@ class TestErrorDetector(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.detector = ErrorDetector()
+        self.detector = ErrorDetector(enable_gemini_analysis=False)
     
     def test_detector_creation(self):
         """Test that detector is created correctly."""

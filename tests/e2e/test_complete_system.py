@@ -17,11 +17,11 @@ load_dotenv()
 # Add the project root to the path
 sys.path.insert(0, '/Users/nirelnemirovsky/Documents/dev/aigie/aigie-io')
 
-from aigie.core.gemini_analyzer import GeminiAnalyzer
-from aigie.core.runtime_validator import RuntimeValidator
-from aigie.core.step_corrector import StepCorrector
-from aigie.core.validation_engine import ValidationEngine
-from aigie.core.validation_types import ExecutionStep, ValidationStrategy
+from aigie.core.ai.gemini_analyzer import GeminiAnalyzer
+from aigie.core.validation.runtime_validator import RuntimeValidator
+from aigie.core.validation.step_corrector import StepCorrector
+from aigie.core.validation.validation_engine import ValidationEngine
+from aigie.core.types.validation_types import ExecutionStep, ValidationStrategy
 from aigie.core.runtime_validator_v2 import ValidationConfig
 from aigie.core.validation_pipeline import ValidationPipeline, ValidationStage
 from aigie.core.validation_monitor import ValidationMonitor

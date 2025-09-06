@@ -15,11 +15,11 @@ load_dotenv()
 # Add the project root to the path
 sys.path.insert(0, '/Users/nirelnemirovsky/Documents/dev/aigie/aigie-io')
 
-from aigie.core.gemini_analyzer import GeminiAnalyzer
-from aigie.core.runtime_validator import RuntimeValidator
-from aigie.core.step_corrector import StepCorrector
-from aigie.core.validation_engine import ValidationEngine
-from aigie.core.validation_types import ExecutionStep, ValidationStatus
+from aigie.core.ai.gemini_analyzer import GeminiAnalyzer
+from aigie.core.validation.runtime_validator import RuntimeValidator
+from aigie.core.validation.step_corrector import StepCorrector
+from aigie.core.validation.validation_engine import ValidationEngine
+from aigie.core.types.validation_types import ExecutionStep, ValidationStatus
 
 
 async def test_simple_validation():
@@ -135,7 +135,7 @@ async def test_context_extraction():
         corrector = StepCorrector(gemini_analyzer)
         validation_engine = ValidationEngine(validator, corrector)
         
-        from aigie.core.context_extractor import ContextExtractor
+        from aigie.core.validation.context_extractor import ContextExtractor
         context_extractor = ContextExtractor()
         
         print("✅ All components initialized")
@@ -220,7 +220,7 @@ async def test_llm_context_extraction():
             print("❌ Gemini analyzer not available.")
             return False
         
-        from aigie.core.context_extractor import ContextExtractor
+        from aigie.core.validation.context_extractor import ContextExtractor
         context_extractor = ContextExtractor(gemini_analyzer)
         print("✅ LLM-based context extractor initialized")
         
