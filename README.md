@@ -1,51 +1,33 @@
-# Aigie - AI Agent Runtime Error Detection & Remediation
+# Aigie
+
+[![PyPI version](https://badge.fury.io/py/aigie.svg)](https://badge.fury.io/py/aigie)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Tests](https://img.shields.io/badge/tests-pytest-blue.svg)](https://pytest.org/)
+
+> **AI Agent Runtime Error Detection & Remediation**
 
 Aigie is a real-time error detection and monitoring system for LangChain and LangGraph applications with **intelligent error remediation capabilities**. It provides seamless integration without requiring additional code from users, automatically detecting, analyzing, and fixing runtime errors as they occur.
 
-## 🎯 Mission
+## ✨ Features
 
-Enable developers to build more reliable AI agents by providing real-time visibility into runtime errors, performance issues, and state problems in LangChain and LangGraph applications, with the ability to automatically remediate errors using AI-powered analysis.
+- **🚀 Zero-Code Integration** - Automatically detects and wraps LangChain/LangGraph applications
+- **⚡ Real-time Error Detection** - Immediate error reporting with classification and severity assessment
+- **🤖 Gemini-Powered Analysis** - AI-powered error classification and intelligent remediation
+- **🔄 Intelligent Retry System** - Automatic retry with enhanced context from Gemini
+- **💉 Prompt Injection Remediation** - Actually fixes errors by injecting guidance into AI agent prompts
+- **📊 Comprehensive Monitoring** - Covers execution, API, state, and memory errors
+- **📈 Performance Insights** - Track execution time, memory usage, and resource consumption
+- **🧠 Pattern Learning** - Learns from successful and failed operations to improve over time
 
-## 🚀 Key Features
+## 🚀 Quick Start
 
-- **Zero-Code Integration**: Automatically detects and wraps LangChain/LangGraph applications
-- **Real-time Error Detection**: Immediate error reporting with classification and severity assessment
-- **🤖 Gemini-Powered Error Analysis**: AI-powered error classification and intelligent remediation
-- **🔄 Intelligent Retry System**: Automatic retry with enhanced context from Gemini
-- **💉 Prompt Injection Remediation**: Actually fixes errors by injecting guidance into AI agent prompts
-- **Comprehensive Monitoring**: Covers execution, API, state, and memory errors
-- **Performance Insights**: Track execution time, memory usage, and resource consumption
-- **Pattern Learning**: Learns from successful and failed operations to improve over time
-
-## 📦 Installation
+### Installation
 
 ```bash
 pip install aigie
 ```
-
-## 🤖 Gemini Integration
-
-Aigie supports two ways to use Gemini:
-
-### 1. Vertex AI (Recommended for production)
-```bash
-export GOOGLE_CLOUD_PROJECT=your-project-id
-gcloud auth application-default login
-gcloud services enable aiplatform.googleapis.com
-```
-
-### 2. Gemini API Key (Best for local/dev)
-```bash
-export GEMINI_API_KEY=your-gemini-api-key
-# Get from https://aistudio.google.com/app/apikey
-```
-
-### Install Gemini dependencies
-```bash
-pip install google-cloud-aiplatform vertexai google-generativeai
-```
-
-## 🔧 Quick Start
 
 ### Basic Usage (Zero Code Changes)
 
@@ -80,6 +62,30 @@ app = graph.compile()
 result = app.invoke({"input": "Hello"})
 ```
 
+## 🤖 Gemini Integration
+
+Aigie supports two ways to use Gemini:
+
+### 1. Vertex AI (Recommended for production)
+```bash
+export GOOGLE_CLOUD_PROJECT=your-project-id
+gcloud auth application-default login
+gcloud services enable aiplatform.googleapis.com
+```
+
+### 2. Gemini API Key (Best for local/dev)
+```bash
+export GEMINI_API_KEY=your-gemini-api-key
+# Get from https://aistudio.google.com/app/apikey
+```
+
+### Install Gemini dependencies
+```bash
+pip install google-cloud-aiplatform vertexai google-generativeai
+```
+
+## 🔧 Advanced Usage
+
 ### Intelligent Retry with Enhanced Context
 
 ```python
@@ -112,87 +118,45 @@ aigie gemini --status
 aigie gemini --test
 ```
 
+## 📋 Error Types Detected
+
+| Category | Description |
+|----------|-------------|
+| **Execution Errors** | Runtime exceptions, timeouts, infinite loops |
+| **API Errors** | External service failures, rate limits, authentication issues |
+| **State Errors** | Invalid state transitions, data corruption, type mismatches |
+| **Memory Errors** | Overflow, corruption, persistence failures |
+| **Performance Issues** | Slow execution, resource exhaustion, memory leaks |
+| **Framework-specific** | LangChain chain/tool/agent errors, LangGraph node/state errors |
+
+## 📊 Monitoring Capabilities
+
+- **Real-time Error Logging** - Immediate error reporting with classification
+- **Performance Metrics** - Execution time, memory usage, API call latency
+- **State Tracking** - Monitor agent state changes and transitions
+- **Resource Monitoring** - CPU, memory, and disk usage with health indicators
+- **AI-Powered Analysis** - Intelligent error classification and remediation strategies
+- **Pattern Learning** - Learns from successful and failed operations
+
 ## 🏗️ Project Structure
 
 ```
 aigie/
-├── core/                    # Core functionality (organized by component type)
-│   ├── types/              # 📋 Type definitions and data structures
-│   │   ├── error_types.py      # Error classification and severity
-│   │   └── validation_types.py # Validation data structures
-│   ├── validation/         # 🧠 Runtime validation system
-│   │   ├── runtime_validator.py     # LLM-as-Judge implementation
-│   │   ├── step_corrector.py        # Auto-correction system
-│   │   ├── validation_engine.py     # Main orchestrator
-│   │   ├── validation_pipeline.py   # Multi-stage validation
-│   │   ├── validation_monitor.py    # Performance monitoring
-│   │   └── context_extractor.py     # Context inference
-│   ├── error_handling/     # ⚠️ Error detection and handling
-│   │   ├── error_detector.py        # Main error detection engine
-│   │   └── intelligent_retry.py     # Smart retry system
-│   ├── monitoring/         # 📊 Performance and resource monitoring
-│   │   └── monitoring.py           # Resource monitoring
-│   ├── ai/                 # 🤖 AI/LLM components
-│   │   └── gemini_analyzer.py      # Gemini-powered analysis
-│   └── utils/              # 🛠️ Utility functions (ready for future use)
+├── core/                    # Core functionality
+│   ├── types/              # Type definitions and data structures
+│   ├── validation/         # Runtime validation system
+│   ├── error_handling/     # Error detection and handling
+│   ├── monitoring/         # Performance and resource monitoring
+│   ├── ai/                 # AI/LLM components
+│   └── utils/              # Utility functions
 ├── interceptors/           # Framework-specific interceptors
-│   ├── langchain.py        # LangChain interceptor
-│   ├── langgraph.py        # LangGraph interceptor
-│   └── validation_interceptor.py # Enhanced interceptor with validation
 ├── reporting/              # Error reporting and logging
 ├── utils/                  # Utility functions
 ├── cli.py                  # Command-line interface
 └── auto_integration.py     # Automatic integration system
 ```
 
-## 🔍 Error Types Detected
-
-- **Execution Errors**: Runtime exceptions, timeouts, infinite loops
-- **API Errors**: External service failures, rate limits, authentication issues
-- **State Errors**: Invalid state transitions, data corruption, type mismatches
-- **Memory Errors**: Overflow, corruption, persistence failures
-- **Performance Issues**: Slow execution, resource exhaustion, memory leaks
-- **Framework-specific**: LangChain chain/tool/agent errors, LangGraph node/state errors
-
-## 📊 Monitoring Capabilities
-
-- **Real-time Error Logging**: Immediate error reporting with classification
-- **Performance Metrics**: Execution time, memory usage, API call latency
-- **State Tracking**: Monitor agent state changes and transitions
-- **Resource Monitoring**: CPU, memory, and disk usage with health indicators
-- **AI-Powered Analysis**: Intelligent error classification and remediation strategies
-- **Pattern Learning**: Learns from successful and failed operations
-
-## 🛠️ Development
-
-### Setup Development Environment
-
-```bash
-git clone <repository>
-cd aigie
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install -r requirements.txt
-pip install -e .
-```
-
-### Run Tests
-
-```bash
-pytest tests/ -v
-```
-
-### Run Examples
-
-```bash
-# Set up Gemini (one-time)
-export GOOGLE_CLOUD_PROJECT=your-project-id
-
-# Run comprehensive example
-python examples/ai_research_assistant.py
-```
-
-## 📝 Configuration
+## ⚙️ Configuration
 
 ### Environment Variables
 
@@ -213,7 +177,66 @@ aigie config --generate config.yml
 aigie enable --config config.yml
 ```
 
-## 🎯 Current Status
+## 🛠️ Development
+
+### Prerequisites
+
+- Python 3.9+
+- pip
+- git
+
+### Setup Development Environment
+
+```bash
+# Clone the repository
+git clone https://github.com/your-org/aigie.git
+cd aigie
+
+# Create virtual environment
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+pip install -e .
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest tests/ -v
+
+# Run specific test categories
+pytest tests/unit/ -v
+pytest tests/integration/ -v
+pytest tests/e2e/ -v
+```
+
+### Running Examples
+
+```bash
+# Set up Gemini (one-time)
+export GOOGLE_CLOUD_PROJECT=your-project-id
+
+# Run comprehensive example
+python examples/ai_research_assistant.py
+```
+
+### Code Quality
+
+```bash
+# Format code
+black aigie/ tests/ examples/
+
+# Lint code
+flake8 aigie/ tests/ examples/
+
+# Type checking
+mypy aigie/
+```
+
+## 📈 Current Status
 
 ✅ **Fully Implemented and Working**:
 - Core error detection engine with Gemini integration
@@ -225,17 +248,42 @@ aigie enable --config config.yml
 
 ## 🤝 Contributing
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Submit a pull request
+We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.
+
+### How to Contribute
+
+1. **Fork** the repository
+2. **Create** a feature branch (`git checkout -b feature/amazing-feature`)
+3. **Commit** your changes (`git commit -m 'Add some amazing feature'`)
+4. **Push** to the branch (`git push origin feature/amazing-feature`)
+5. **Open** a Pull Request
+
+### Development Guidelines
+
+- Follow the existing code style
+- Add tests for new features
+- Update documentation as needed
+- Ensure all tests pass
+- Follow semantic commit messages
 
 ## 📄 License
 
-MIT License - see LICENSE file for details
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## 🆘 Support
 
-- GitHub Issues: [Report bugs and feature requests](https://github.com/your-org/aigie/issues)
-- Documentation: [Full API reference](https://aigie.readthedocs.io)
+- **Documentation**: [Full API reference](https://aigie.readthedocs.io)
+- **Issues**: [Report bugs and feature requests](https://github.com/your-org/aigie/issues)
+- **Discussions**: [Community discussions](https://github.com/your-org/aigie/discussions)
+
+## 🙏 Acknowledgments
+
+- [LangChain](https://github.com/langchain-ai/langchain) for the amazing AI framework
+- [LangGraph](https://github.com/langchain-ai/langgraph) for the powerful graph-based AI workflows
+- [Google Gemini](https://ai.google.dev/) for the AI analysis capabilities
+
+---
+
+<div align="center">
+  <strong>Built with ❤️ for the AI community</strong>
+</div>
