@@ -8,8 +8,8 @@ __version__ = "0.1.0"
 __author__ = "Aigie Team"
 __email__ = "team@aigie.io"
 
-from .core.error_detector import ErrorDetector
-from .core.monitoring import PerformanceMonitor
+from .core.error_handling.error_detector import ErrorDetector
+from .core.monitoring.monitoring import PerformanceMonitor
 from .interceptors.langchain import LangChainInterceptor
 from .interceptors.langgraph import LangGraphInterceptor
 from .reporting.logger import AigieLogger

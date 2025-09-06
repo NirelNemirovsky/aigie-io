@@ -8,8 +8,8 @@ from typing import Dict, Any, Optional, Callable, List, Union
 from datetime import datetime
 from functools import wraps
 
-from .gemini_analyzer import GeminiAnalyzer
-from .error_types import ErrorContext, DetectedError
+from ..ai.gemini_analyzer import GeminiAnalyzer
+from ..types.error_types import ErrorContext, DetectedError
 
 
 class IntelligentRetry:
@@ -810,8 +810,9 @@ def intelligent_retry(max_retries: int = 3, base_delay: float = 1.0,
             # Create retry instance if not provided
             if gemini_analyzer is None:
                 # Create a basic analyzer without Gemini
-                from .gemini_analyzer import GeminiAnalyzer
-                analyzer = GeminiAnalyzer()
+                from ..ai.gemini_analyzer import GeminiAnalyzer
+                import os
+                analyzer = GeminiAnalyzer(api_key=os.getenv("GEMINI_API_KEY"))
             else:
                 analyzer = gemini_analyzer
             

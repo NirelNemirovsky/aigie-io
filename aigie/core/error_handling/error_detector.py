@@ -2,6 +2,7 @@
 Main error detection engine for Aigie.
 """
 
+import os
 import traceback
 import asyncio
 import logging
@@ -10,12 +11,12 @@ from typing import Dict, Any, Optional, Callable, List, Union
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
-from .error_types import (
+from ..types.error_types import (
     ErrorType, ErrorSeverity, ErrorContext, DetectedError,
     classify_error, determine_severity
 )
-from .monitoring import PerformanceMonitor, ResourceMonitor
-from .gemini_analyzer import GeminiAnalyzer
+from ..monitoring.monitoring import PerformanceMonitor, ResourceMonitor
+from ..ai.gemini_analyzer import GeminiAnalyzer
 from .intelligent_retry import IntelligentRetry
 
 
@@ -87,18 +88,21 @@ class ErrorDetector:
         self.intelligent_retry = None
         if enable_gemini_analysis:
             try:
-                self.gemini_analyzer = GeminiAnalyzer(gemini_project_id, gemini_location)
-                if self.gemini_analyzer.is_available():
+                # Use API key authentication instead of project_id to avoid gcloud auth
+                self.gemini_analyzer = GeminiAnalyzer(api_key=os.getenv("GEMINI_API_KEY"))
+                if self.gemini_analyzer.is_initialized:
                     self.intelligent_retry = IntelligentRetry(self.gemini_analyzer)
                     logging.info("Gemini-powered error analysis and retry enabled")
                 else:
-                    raise RuntimeError("Aigie requires Gemini for error analysis. Please configure GEMINI_API_KEY or GOOGLE_CLOUD_PROJECT.")
+                    raise RuntimeError("Aigie requires Gemini for error analysis. Please configure GEMINI_API_KEY.")
             except Exception as e:
                 logging.error(f"Failed to initialize Gemini: {e}")
                 raise RuntimeError(f"Aigie requires Gemini for error analysis. Initialization failed: {e}")
         else:
             logging.warning("Gemini analysis disabled - Aigie will not function properly without it")
-            raise RuntimeError("Aigie requires Gemini for error analysis. Please enable Gemini analysis.")
+            # Allow testing without Gemini by creating mock components
+            self.gemini_analyzer = None
+            self.intelligent_retry = None
         
         # Error detection settings
         self.enable_timeout_detection = True
@@ -269,6 +273,20 @@ class ErrorDetector:
                 execution_time = (datetime.now() - start_time).total_seconds()
                 if execution_time > self.timeout_threshold:
                     self._detect_timeout(execution_time, context)
+    
+    def monitor_execution_async(self, framework: str, component: str, method: str, **kwargs):
+        """Async context manager for monitoring execution and detecting errors."""
+        if not self.is_monitoring:
+            # Return a dummy async context manager
+            class DummyAsyncContext:
+                async def __aenter__(self):
+                    return self
+                async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    pass
+            return DummyAsyncContext()
+        
+        # Create async execution monitor
+        return AsyncExecutionMonitor(self, framework, component, method, **kwargs)
     
     def _detect_error(self, exception: Exception, context: ErrorContext, perf_metrics: Optional[Any] = None):
         """Detect and process an error using Gemini analysis."""
@@ -961,11 +979,11 @@ Please complete the task now with this enhanced context:"""
         
         return health_status
     
-    def enable_gemini_analysis(self, project_id: Optional[str] = None, location: str = "us-central1"):
+    def enable_gemini_analysis(self, api_key: Optional[str] = None):
         """Enable Gemini-powered error analysis."""
         try:
-            self.gemini_analyzer = GeminiAnalyzer(project_id, location)
-            if self.gemini_analyzer.is_available():
+            self.gemini_analyzer = GeminiAnalyzer(api_key=api_key or os.getenv("GEMINI_API_KEY"))
+            if self.gemini_analyzer.is_initialized:
                 self.intelligent_retry = IntelligentRetry(self.gemini_analyzer)
                 logging.info("Gemini-powered error analysis enabled")
             else:

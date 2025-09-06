@@ -57,7 +57,7 @@ if not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"):
 # Add parent directory for aigie imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from aigie.core.error_detector import ErrorDetector, AsyncErrorDetector
+from aigie.core.error_handling.error_detector import ErrorDetector, AsyncErrorDetector
 from aigie.interceptors.langchain import LangChainInterceptor
 from aigie.interceptors.langgraph import LangGraphInterceptor
 from aigie.reporting.logger import AigieLogger
@@ -144,7 +144,11 @@ async def advanced_web_search_with_llm(query: str, depth: Literal["basic", "comp
     
     if not model:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
+        model = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash", 
+            temperature=0.1,
+            google_api_key=os.getenv("GEMINI_API_KEY")
+        )
     
     # Create search strategy based on depth
     search_prompt = f"""
@@ -228,7 +232,11 @@ async def deep_analysis_with_llm(source_data: Dict[str, Any], analysis_type: Lit
     
     if not model:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
+        model = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash", 
+            temperature=0.1,
+            google_api_key=os.getenv("GEMINI_API_KEY")
+        )
     
     # Create analysis prompt
     analysis_prompt = f"""
@@ -310,7 +318,11 @@ async def synthesis_engine_with_llm(analysis_results: List[Dict[str, Any]], synt
     
     if not model:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
+        model = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash", 
+            temperature=0.1,
+            google_api_key=os.getenv("GEMINI_API_KEY")
+        )
     
     # Prepare analysis data for synthesis
     analysis_summaries = []
@@ -408,7 +420,11 @@ async def process_user_feedback_with_llm(feedback: str, current_state: ResearchS
     
     if not model:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
+        model = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash", 
+            temperature=0.1,
+            google_api_key=os.getenv("GEMINI_API_KEY")
+        )
     
     # Prepare current state context
     state_context = f"""
@@ -490,7 +506,11 @@ async def generate_modified_query_with_llm(original_query: str, feedback: str, m
     
     if not model:
         from langchain_google_genai import ChatGoogleGenerativeAI
-        model = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.1)
+        model = ChatGoogleGenerativeAI(
+            model="gemini-1.5-flash", 
+            temperature=0.1,
+            google_api_key=os.getenv("GEMINI_API_KEY")
+        )
     
     query_prompt = f"""
     You are a research query optimizer. Based on the user feedback, modify the search query to better address their needs:
@@ -604,15 +624,27 @@ async def create_advanced_research_workflow(config: AdvancedConfig, lg_intercept
             # Parse model string (e.g., "google:gemini-1.5-flash" -> ChatGoogleGenerativeAI with gemini-1.5-flash)
             if config.PRIMARY_MODEL.startswith("google:"):
                 model_name = config.PRIMARY_MODEL.split(":", 1)[1]
-                model = ChatGoogleGenerativeAI(model=model_name, temperature=0.1)
+                model = ChatGoogleGenerativeAI(
+                    model=model_name, 
+                    temperature=0.1,
+                    google_api_key=os.getenv("GEMINI_API_KEY")
+                )
                 logger.info(f"✅ Primary model: {config.PRIMARY_MODEL}")
             else:
                 # Fallback to default Gemini model
-                model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+                model = ChatGoogleGenerativeAI(
+                    model="gemini-2.5-flash", 
+                    temperature=0.1,
+                    google_api_key=os.getenv("GEMINI_API_KEY")
+                )
                 logger.info(f"✅ Using fallback model: gemini-2.5-flash")
         except Exception as e:
             # Fallback to default Gemini model
-            model = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1)
+            model = ChatGoogleGenerativeAI(
+                model="gemini-2.5-flash", 
+                temperature=0.1,
+                google_api_key=os.getenv("GEMINI_API_KEY")
+            )
             logger.info(f"✅ Using fallback model: gemini-2.5-flash (error: {e})")
         
         # Create advanced checkpointer with graceful fallback

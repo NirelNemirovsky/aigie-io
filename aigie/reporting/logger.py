@@ -15,7 +15,7 @@ from rich.text import Text
 from rich.syntax import Syntax
 import structlog
 
-from ..core.error_types import DetectedError, ErrorSeverity
+from ..core.types.error_types import DetectedError, ErrorSeverity
 
 
 class AigieLogger:

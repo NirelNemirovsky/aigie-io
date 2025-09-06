@@ -37,6 +37,13 @@ import sys
 import time
 import random
 import asyncio
+
+# Load environment variables
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 from typing import Dict, Any, List, TypedDict, Optional, Protocol
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -48,9 +55,9 @@ from abc import ABC, abstractmethod
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from aigie import auto_integrate, show_status, show_analysis
-from aigie.core.error_detector import ErrorDetector
-from aigie.core.gemini_analyzer import GeminiAnalyzer
-from aigie.core.intelligent_retry import IntelligentRetry
+from aigie.core.error_handling.error_detector import ErrorDetector
+from aigie.core.ai.gemini_analyzer import GeminiAnalyzer
+from aigie.core.error_handling.intelligent_retry import IntelligentRetry
 from aigie.interceptors.langchain import LangChainInterceptor
 from aigie.interceptors.langgraph import LangGraphInterceptor
 from aigie.reporting.logger import AigieLogger
@@ -742,27 +749,14 @@ async def main():
         # Initialize configuration
         config = Config()
         
-        # Initialize aigie components
+        # Initialize aigie with auto-integration
         print("\n📊 Initializing Aigie Error Detection System...")
         
-        # Create error detector with Gemini integration
-        error_detector = ErrorDetector(
-            enable_performance_monitoring=True,
-            enable_resource_monitoring=True,
-            enable_gemini_analysis=True
-        )
-        
-        # Create logger
-        aigie_logger = AigieLogger()
-        
-        # Create interceptors
-        langchain_interceptor = LangChainInterceptor(error_detector, aigie_logger)
-        langgraph_interceptor = LangGraphInterceptor(error_detector, aigie_logger)
-        
-        # Start monitoring
-        error_detector.start_monitoring()
-        langchain_interceptor.start_intercepting()
-        langgraph_interceptor.start_intercepting()
+        # Use the new auto-integrate approach
+        aigie = auto_integrate()
+        error_detector = aigie.error_detector
+        langchain_interceptor = aigie.langchain_interceptor
+        langgraph_interceptor = aigie.langgraph_interceptor
         
         print("✅ Aigie monitoring started successfully")
         

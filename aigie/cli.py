@@ -499,7 +499,7 @@ def test_gemini_connection() -> int:
         print("🧪 Testing Gemini connection...")
         
         # Try to create a Gemini analyzer
-        from .core.gemini_analyzer import GeminiAnalyzer
+        from .core.ai.gemini_analyzer import GeminiAnalyzer
         
         # Get project ID from environment or config
         project_id = os.getenv('GOOGLE_CLOUD_PROJECT')

@@ -7,8 +7,8 @@ import inspect
 from typing import Any, Callable, Dict, Optional, Union
 from datetime import datetime
 
-from ..core.error_detector import ErrorDetector
-from ..core.error_types import ErrorContext
+from ..core.error_handling.error_detector import ErrorDetector
+from ..core.types.error_types import ErrorContext
 from ..reporting.logger import AigieLogger
 
 
@@ -517,7 +517,7 @@ class LangChainInterceptor:
         """Get current interception status."""
         return {
             "is_intercepting": self.error_detector.is_monitoring,
-            "intercepted_classes": list(self.intercepted_classes),
+            "intercepted_classes": [cls.__name__ if hasattr(cls, '__name__') else str(cls) for cls in self.intercepted_classes],
             "patched_methods": list(self.original_methods.keys()),
             "target_classes": list(self.target_classes.keys())
         }

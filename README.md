@@ -116,15 +116,29 @@ aigie gemini --test
 
 ```
 aigie/
-├── core/                    # Core error detection engine
-│   ├── error_detector.py   # Main error detection with real-time remediation
-│   ├── error_types.py      # Error classification and severity
-│   ├── monitoring.py       # Performance and resource monitoring
-│   ├── gemini_analyzer.py  # 🤖 Gemini-powered error analysis
-│   └── intelligent_retry.py # 🔄 Intelligent retry with prompt injection
+├── core/                    # Core functionality (organized by component type)
+│   ├── types/              # 📋 Type definitions and data structures
+│   │   ├── error_types.py      # Error classification and severity
+│   │   └── validation_types.py # Validation data structures
+│   ├── validation/         # 🧠 Runtime validation system
+│   │   ├── runtime_validator.py     # LLM-as-Judge implementation
+│   │   ├── step_corrector.py        # Auto-correction system
+│   │   ├── validation_engine.py     # Main orchestrator
+│   │   ├── validation_pipeline.py   # Multi-stage validation
+│   │   ├── validation_monitor.py    # Performance monitoring
+│   │   └── context_extractor.py     # Context inference
+│   ├── error_handling/     # ⚠️ Error detection and handling
+│   │   ├── error_detector.py        # Main error detection engine
+│   │   └── intelligent_retry.py     # Smart retry system
+│   ├── monitoring/         # 📊 Performance and resource monitoring
+│   │   └── monitoring.py           # Resource monitoring
+│   ├── ai/                 # 🤖 AI/LLM components
+│   │   └── gemini_analyzer.py      # Gemini-powered analysis
+│   └── utils/              # 🛠️ Utility functions (ready for future use)
 ├── interceptors/           # Framework-specific interceptors
 │   ├── langchain.py        # LangChain interceptor
-│   └── langgraph.py        # LangGraph interceptor
+│   ├── langgraph.py        # LangGraph interceptor
+│   └── validation_interceptor.py # Enhanced interceptor with validation
 ├── reporting/              # Error reporting and logging
 ├── utils/                  # Utility functions
 ├── cli.py                  # Command-line interface

@@ -7,7 +7,7 @@ import sys
 from typing import Optional, Dict, Any
 from contextlib import contextmanager
 
-from .core.error_detector import ErrorDetector
+from .core.error_handling.error_detector import ErrorDetector
 from .reporting.logger import AigieLogger, ConsoleLogger
 from .interceptors.langchain import LangChainInterceptor
 from .interceptors.langgraph import LangGraphInterceptor
@@ -23,7 +23,7 @@ class AigieAutoIntegrator:
             enable_performance_monitoring=self.config.enable_performance_monitoring,
             enable_resource_monitoring=self.config.enable_resource_monitoring,
             enable_gemini_analysis=self.config.enable_gemini_analysis,
-            gemini_project_id=self.config.gemini_project_id,
+            gemini_project_id=None,  # Force API key authentication
             gemini_location=self.config.gemini_location
         )
         
@@ -151,7 +151,7 @@ class AigieAutoIntegrator:
         """Get comprehensive integration status."""
         return {
             "is_integrated": self.is_integrated,
-            "integration_start_time": self.integration_start_time.isoformat() if self.integration_start_time else None,
+            "integration_start_time": self.integration_start_time.start_time.isoformat() if self.integration_start_time and hasattr(self.integration_start_time, 'start_time') else None,
             "error_detector": {
                 "is_monitoring": self.error_detector.is_monitoring,
                 "total_errors": len(self.error_detector.error_history),

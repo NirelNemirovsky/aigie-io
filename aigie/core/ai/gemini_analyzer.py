@@ -23,7 +23,7 @@ try:
 except ImportError:
     GEMINI_API_KEY_AVAILABLE = False
 
-from .error_types import ErrorType, ErrorSeverity, DetectedError, ErrorContext
+from ..types.error_types import ErrorType, ErrorSeverity, DetectedError, ErrorContext
 
 
 class GeminiAnalyzer:
@@ -654,6 +654,7 @@ Generate the prompt injection remediation now:"""
     def get_status(self) -> Dict[str, Any]:
         """Get the current status of the Gemini analyzer."""
         return {
+            "enabled": self.is_initialized and self.model is not None,
             "is_initialized": self.is_initialized,
             "backend": self.backend,
             "project_id": self.project_id,
@@ -670,3 +671,31 @@ Generate the prompt injection remediation now:"""
         """Clear the analysis cache."""
         self.analysis_cache.clear()
         logging.info("Gemini analysis cache cleared")
+    
+    async def _generate_content_async(self, prompt: str) -> str:
+        """Generate content asynchronously using Gemini."""
+        if not self.is_initialized:
+            raise RuntimeError("Gemini analyzer is not initialized")
+        
+        try:
+            if self.backend == 'vertex':
+                # For Vertex AI, we need to use the sync method in async context
+                import asyncio
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(None, self.model.generate_content, prompt)
+                return response.text
+            elif self.backend == 'api_key':
+                # For API key backend, use sync method in async context
+                import asyncio
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(None, self.model.generate_content, prompt)
+                # Handle response text extraction
+                text = getattr(response, 'text', None)
+                if not text and hasattr(response, 'candidates') and response.candidates:
+                    text = response.candidates[0].text
+                return text
+            else:
+                raise RuntimeError("No valid Gemini backend available")
+        except Exception as e:
+            logging.error(f"Async content generation failed: {e}")
+            raise

@@ -129,6 +129,24 @@ This example shows:
 - Generating remediation strategies
 - Configuration options and best practices
 
+## 📁 Updated Import Paths
+
+With the new organized structure, imports have been updated:
+
+```python
+# Old imports (still work via __init__.py)
+from aigie.core import ErrorDetector, PerformanceMonitor, GeminiAnalyzer
+from aigie.core import RuntimeValidator, StepCorrector, ValidationEngine
+
+# New direct imports (recommended for clarity)
+from aigie.core.error_handling.error_detector import ErrorDetector
+from aigie.core.monitoring.monitoring import PerformanceMonitor
+from aigie.core.ai.gemini_analyzer import GeminiAnalyzer
+from aigie.core.validation.runtime_validator import RuntimeValidator
+from aigie.core.validation.step_corrector import StepCorrector
+from aigie.core.validation.validation_engine import ValidationEngine
+```
+
 ## 🔍 Customization
 
 You can modify the example to:

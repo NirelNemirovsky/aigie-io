@@ -7,8 +7,8 @@ import asyncio
 from typing import Optional, Callable, Any
 from contextlib import contextmanager
 
-from ..core.error_detector import ErrorDetector
-from ..core.error_types import ErrorContext
+from ..core.error_handling.error_detector import ErrorDetector
+from ..core.types.error_types import ErrorContext
 from ..utils.config import AigieConfig
 
 
