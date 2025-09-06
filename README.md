@@ -262,8 +262,8 @@ aigie enable --config config.yml
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/aigie.git
-cd aigie
+git clone https://github.com/NirelNemirovsky/aigie-io.git
+cd aigie-io
 
 # Create virtual environment
 python -m venv venv
@@ -349,8 +349,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## 🆘 Support
 
 - **Documentation**: [Full API reference](https://aigie.readthedocs.io)
-- **Issues**: [Report bugs and feature requests](https://github.com/your-org/aigie/issues)
-- **Discussions**: [Community discussions](https://github.com/your-org/aigie/discussions)
+- **Issues**: [Report bugs and feature requests](https://github.com/NirelNemirovsky/aigie-io/issues)
+- **Discussions**: [Community discussions](https://github.com/NirelNemirovsky/aigie-io/discussions)
 
 ## 🙏 Acknowledgments
 
