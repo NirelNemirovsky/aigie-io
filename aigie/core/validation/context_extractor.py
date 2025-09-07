@@ -191,46 +191,48 @@ class ContextExtractor:
             except Exception as e:
                 return f"Error analyzing input data: {str(e)}"
         
-        def analyze_component_context(component: str, operation: str, framework: str) -> str:
+        def analyze_component_context(component: str, operation: str = "unknown", framework: str = "unknown") -> str:
             """Analyze the component and operation to understand the context."""
             try:
                 # Component analysis
                 component_analysis = {
-                    "component": component,
-                    "operation": operation,
-                    "framework": framework,
+                    "component": component or "unknown",
+                    "operation": operation or "unknown",
+                    "framework": framework or "unknown",
                     "component_type": "unknown",
                     "operation_type": "unknown",
                     "typical_purpose": "unknown"
                 }
                 
                 # Analyze component type
-                if "Chat" in component or "LLM" in component:
+                component_str = component or ""
+                if "Chat" in component_str or "LLM" in component_str:
                     component_analysis["component_type"] = "language_model"
                     component_analysis["typical_purpose"] = "conversational_ai"
-                elif "Tool" in component:
+                elif "Tool" in component_str:
                     component_analysis["component_type"] = "tool"
-                    if "Database" in component:
+                    if "Database" in component_str:
                         component_analysis["typical_purpose"] = "data_querying"
-                    elif "Search" in component:
+                    elif "Search" in component_str:
                         component_analysis["typical_purpose"] = "information_retrieval"
-                    elif "Calculator" in component:
+                    elif "Calculator" in component_str:
                         component_analysis["typical_purpose"] = "mathematical_computation"
-                elif "Chain" in component:
+                elif "Chain" in component_str:
                     component_analysis["component_type"] = "chain"
                     component_analysis["typical_purpose"] = "workflow_execution"
-                elif "Graph" in component:
+                elif "Graph" in component_str:
                     component_analysis["component_type"] = "graph"
                     component_analysis["typical_purpose"] = "workflow_orchestration"
                 
                 # Analyze operation type
-                if operation in ["invoke", "ainvoke"]:
+                operation_str = operation or ""
+                if operation_str in ["invoke", "ainvoke"]:
                     component_analysis["operation_type"] = "direct_execution"
-                elif operation in ["run", "arun"]:
+                elif operation_str in ["run", "arun"]:
                     component_analysis["operation_type"] = "workflow_execution"
-                elif operation in ["query", "search"]:
+                elif operation_str in ["query", "search"]:
                     component_analysis["operation_type"] = "information_retrieval"
-                elif operation in ["calculate", "execute"]:
+                elif operation_str in ["calculate", "execute"]:
                     component_analysis["operation_type"] = "computation"
                 
                 return json.dumps(component_analysis, indent=2)
