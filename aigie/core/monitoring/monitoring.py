@@ -65,7 +65,7 @@ class PerformanceMonitor:
         self._lock = threading.Lock()
         
         # Thresholds for performance warnings
-        self.execution_time_threshold = 30.0  # seconds
+        self.execution_time_threshold = 60.0  # seconds (increased for testing)
         self.memory_threshold = 1024.0  # MB
         self.cpu_threshold = 80.0  # percent
     

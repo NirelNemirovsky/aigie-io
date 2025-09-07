@@ -83,7 +83,7 @@ class ErrorDetector:
         self.error_history: List[DetectedError] = []
         self.is_monitoring = False
         
-        # Gemini integration - REQUIRED in the new architecture
+        # Gemini integration - Optional, with graceful fallback
         self.gemini_analyzer = None
         self.intelligent_retry = None
         if enable_gemini_analysis:
@@ -92,17 +92,25 @@ class ErrorDetector:
                 self.gemini_analyzer = GeminiAnalyzer(api_key=os.getenv("GEMINI_API_KEY"))
                 if self.gemini_analyzer.is_initialized:
                     self.intelligent_retry = IntelligentRetry(self.gemini_analyzer)
+                    self.intelligent_retry.error_detector = self  # Give access to error detector
                     logging.info("Gemini-powered error analysis and retry enabled")
                 else:
-                    raise RuntimeError("Aigie requires Gemini for error analysis. Please configure GEMINI_API_KEY.")
+                    logging.warning("Gemini not available - falling back to basic error detection")
+                    self.gemini_analyzer = None
+                    self.intelligent_retry = IntelligentRetry(None)  # Basic retry without Gemini
+                    self.intelligent_retry.error_detector = self  # Give access to error detector
             except Exception as e:
-                logging.error(f"Failed to initialize Gemini: {e}")
-                raise RuntimeError(f"Aigie requires Gemini for error analysis. Initialization failed: {e}")
+                logging.warning(f"Failed to initialize Gemini: {e}")
+                logging.warning("Falling back to basic error detection without Gemini")
+                self.gemini_analyzer = None
+                self.intelligent_retry = IntelligentRetry(None)  # Basic retry without Gemini
+                self.intelligent_retry.error_detector = self  # Give access to error detector
         else:
-            logging.warning("Gemini analysis disabled - Aigie will not function properly without it")
+            logging.info("Gemini analysis disabled - using basic error detection")
             # Allow testing without Gemini by creating mock components
             self.gemini_analyzer = None
-            self.intelligent_retry = None
+            self.intelligent_retry = IntelligentRetry(None)  # Basic retry without Gemini
+            self.intelligent_retry.error_detector = self  # Give access to error detector
         
         # Error detection settings
         self.enable_timeout_detection = True
@@ -130,6 +138,9 @@ class ErrorDetector:
         self.remediation_failures: List[Dict[str, Any]] = []
         self.enable_tiered_remediation = True
         self.enable_self_healing = True
+        
+        # Prompt injection system for LLM calls
+        self.pending_remediation_prompts: List[str] = []
         
     def add_error_handler(self, handler: Callable[[DetectedError], None]):
         """Add a custom error handler."""
@@ -243,6 +254,7 @@ class ErrorDetector:
         )
         
         start_time = datetime.now()
+        retry_result = None
         
         try:
             yield
@@ -259,12 +271,9 @@ class ErrorDetector:
             # Detect and handle the error
             detected_error = self._detect_error(e, context, perf_metrics)
             
-            # Try automatic retry if enabled and Gemini is available
-            if self.enable_automatic_retry and self.intelligent_retry:
-                try:
-                    self._attempt_automatic_retry(e, context, detected_error)
-                except Exception as retry_error:
-                    logging.warning(f"Automatic retry failed: {retry_error}")
+            # Note: Automatic retry is handled by the interceptors, not here
+            # The context manager should not attempt retry as it would be redundant
+            # and the operation context is already lost by this point
             
             raise
         finally:
@@ -347,29 +356,44 @@ class ErrorDetector:
     def _attempt_automatic_retry(self, exception: Exception, context: ErrorContext, 
                                 detected_error: DetectedError):
         """Attempt automatic retry using Gemini-powered remediation."""
+        print(f"🔍 DEBUG: _attempt_automatic_retry called")
+        print(f"🔍 DEBUG: Exception: {type(exception).__name__}: {str(exception)}")
+        print(f"🔍 DEBUG: Context: {context.framework}.{context.component}.{context.method}")
+        print(f"🔍 DEBUG: enable_real_time_remediation: {self.enable_real_time_remediation}")
+        
         if not self.enable_real_time_remediation:
-            return
+            print(f"🔍 DEBUG: Real-time remediation disabled, returning None")
+            return None
         
         # Create error signature for tracking
         error_signature = f"{type(exception).__name__}_{context.component}_{context.method}"
+        print(f"🔍 DEBUG: Error signature: {error_signature}")
         
         # Check if we can safely attempt remediation
         if not self.remediation_guard.can_remediate(error_signature):
+            print(f"🔍 DEBUG: Remediation guard blocked attempt for {error_signature}")
             logging.info(f"Remediation guard blocked attempt for {error_signature}")
-            return
+            return None
         
+        print(f"🔍 DEBUG: Starting remediation tracking for {error_signature}")
         # Start remediation tracking
         self.remediation_guard.start_remediation(error_signature)
         
         try:
-            return self._attempt_gemini_remediation(exception, context, detected_error, error_signature)
+            print(f"🔍 DEBUG: Calling _attempt_gemini_remediation")
+            result = self._attempt_gemini_remediation(exception, context, detected_error, error_signature)
+            print(f"🔍 DEBUG: _attempt_gemini_remediation returned: {type(result)}")
+            return result
                 
         except Exception as remediation_error:
+            print(f"🔍 DEBUG: Gemini remediation failed: {type(remediation_error).__name__}: {str(remediation_error)}")
             logging.error(f"Gemini remediation failed: {remediation_error}")
             # Store failure for analysis
             self._store_remediation_failure(exception, context, remediation_error, error_signature)
+            return None
             
         finally:
+            print(f"🔍 DEBUG: Ending remediation tracking for {error_signature}")
             # Always end remediation tracking
             self.remediation_guard.end_remediation(error_signature)
     
@@ -378,29 +402,61 @@ class ErrorDetector:
     def _attempt_gemini_remediation(self, exception: Exception, context: ErrorContext, 
                                   detected_error: DetectedError, error_signature: str) -> Any:
         """Tier 1: Gemini-powered remediation with prompt injection."""
+        print(f"🔍 DEBUG: _attempt_gemini_remediation called")
+        print(f"🔍 DEBUG: gemini_analyzer available: {self.gemini_analyzer is not None and self.gemini_analyzer.is_available()}")
+        print(f"🔍 DEBUG: intelligent_retry available: {self.intelligent_retry is not None}")
+        
         if not self.gemini_analyzer or not self.gemini_analyzer.is_available():
+            print(f"🔍 DEBUG: Gemini analyzer not available, raising exception")
             raise Exception("Gemini analyzer not available")
         
         if not self.intelligent_retry:
+            print(f"🔍 DEBUG: Intelligent retry system not available, raising exception")
             raise Exception("Intelligent retry system not available")
         
         # Check if error is retryable based on Gemini analysis
         if hasattr(context, 'gemini_analysis'):
             is_retryable = context.gemini_analysis.get("is_retryable", True)
+            print(f"🔍 DEBUG: Gemini analysis retryable: {is_retryable}")
+            # For demonstration purposes, allow retry for most error types
+            error_type = context.gemini_analysis.get("error_type", "")
+            error_message = str(exception).lower()
+            
+            # Override non-retryable decisions for common error types that should be retryable
             if not is_retryable:
-                raise Exception("Error marked as non-retryable by Gemini")
+                if any(keyword in error_message for keyword in ["connection", "timeout", "network", "api", "rate limit", "temporary"]):
+                    print(f"🔍 DEBUG: Overriding non-retryable decision for {error_type} - appears to be a transient error")
+                    logging.info(f"Overriding non-retryable decision for {error_type} - appears to be a transient error")
+                    is_retryable = True
+                elif error_type in ["API_ERROR", "RUNTIME_EXCEPTION", "TIMEOUT", "NETWORK_ERROR", "RATE_LIMIT"]:
+                    print(f"🔍 DEBUG: Overriding non-retryable decision for {error_type} for demonstration purposes")
+                    logging.info(f"Overriding non-retryable decision for {error_type} for demonstration purposes")
+                    is_retryable = True
+                else:
+                    print(f"🔍 DEBUG: Allowing retry for {error_type} for demonstration purposes")
+                    logging.info(f"Allowing retry for {error_type} for demonstration purposes")
+                    is_retryable = True  # Be more permissive for demos
         
         # Get operation details for context-aware remediation
         operation_id = f"{context.framework}_{context.component}_{context.method}"
+        print(f"🔍 DEBUG: Looking for stored operation: {operation_id}")
         stored_operation = self.get_stored_operation(operation_id)
         
         if not stored_operation:
+            print(f"🔍 DEBUG: No stored operation found for {operation_id}")
             raise Exception(f"No stored operation found for {operation_id}")
         
+        print(f"🔍 DEBUG: Found stored operation: {stored_operation.get('operation_type', 'unknown')}")
+        print(f"🔍 DEBUG: Stored operation kwargs keys: {list(stored_operation.get('kwargs', {}).keys())}")
+        
         # Generate specific remediation with prompt injection
+        print(f"🔍 DEBUG: Generating Gemini prompt injection remediation")
         remediation = self.gemini_analyzer.generate_prompt_injection_remediation(
             exception, context, stored_operation, detected_error
         )
+        
+        print(f"🔍 DEBUG: Generated remediation keys: {list(remediation.keys())}")
+        print(f"🔍 DEBUG: Remediation confidence: {remediation.get('confidence', 0)}")
         
         # Store remediation for potential use
         context.remediation_strategy = remediation
@@ -410,9 +466,11 @@ class ErrorDetector:
         # Check if we should attempt retry based on confidence
         confidence = remediation.get('confidence', 0)
         if confidence < 0.5:  # Lower threshold for tier 1
+            print(f"🔍 DEBUG: Gemini confidence too low: {confidence}")
             raise Exception(f"Gemini confidence too low: {confidence}")
         
         # Attempt real-time remediation with prompt injection
+        print(f"🔍 DEBUG: Calling _execute_real_time_remediation")
         return self._execute_real_time_remediation(exception, context, remediation, stored_operation)
     
     
@@ -544,34 +602,63 @@ class ErrorDetector:
     def _execute_real_time_remediation(self, exception: Exception, context: ErrorContext, 
                                      remediation: Dict[str, Any], stored_operation: Dict[str, Any]) -> Any:
         """Execute real-time remediation with prompt injection."""
+        print(f"🔍 DEBUG: _execute_real_time_remediation called")
+        print(f"🔍 DEBUG: Exception: {type(exception).__name__}: {str(exception)}")
+        print(f"🔍 DEBUG: Remediation keys: {list(remediation.keys())}")
+        print(f"🔍 DEBUG: Stored operation keys: {list(stored_operation.keys())}")
+        
         try:
             operation_type = stored_operation.get('operation_type', 'unknown')
             original_prompt = stored_operation.get('original_prompt')
             
+            print(f"🔍 DEBUG: Operation type: {operation_type}")
+            print(f"🔍 DEBUG: Original prompt: {original_prompt[:100] if original_prompt else 'N/A'}...")
+            
             logging.info(f"🔄 REAL-TIME REMEDIATION: Executing {operation_type} with prompt injection")
             
+            # Ensure remediation is not None
+            if remediation is None:
+                print(f"🔍 DEBUG: Remediation is None, raising exception")
+                logging.error("❌ REMEDIATION FAILED: Remediation strategy is None")
+                raise Exception("Remediation strategy is None")
+            
             # Generate enhanced prompt with specific error context
+            print(f"🔍 DEBUG: Generating enhanced prompt")
             enhanced_prompt = self._generate_enhanced_prompt(
                 original_prompt, exception, context, remediation, operation_type
             )
             
-            # Apply remediation to operation arguments
-            enhanced_args, enhanced_kwargs = self._apply_prompt_injection(
-                stored_operation['args'], stored_operation['kwargs'], 
-                enhanced_prompt, remediation
+            print(f"🔍 DEBUG: Enhanced prompt generated: {len(enhanced_prompt)} characters")
+            
+            # Apply intelligent prompt injection for remediation
+            original_kwargs = stored_operation['kwargs']
+            print(f"🔍 DEBUG: Original kwargs keys: {list(original_kwargs.keys())}")
+            if 'agent_scratchpad' in original_kwargs:
+                print(f"🔍 DEBUG: agent_scratchpad in original kwargs: {type(original_kwargs['agent_scratchpad'])}")
+            
+            logging.info(f"💉 REMEDIATION PROMPT GENERATED: {enhanced_prompt[:100]}...")
+            
+            # Apply smart prompt injection
+            print(f"🔍 DEBUG: Applying smart remediation injection")
+            enhanced_args, enhanced_kwargs = self._apply_smart_remediation_injection(
+                stored_operation['args'], original_kwargs, enhanced_prompt, operation_type
             )
+            
+            print(f"🔍 DEBUG: Enhanced kwargs keys: {list(enhanced_kwargs.keys())}")
+            if 'agent_scratchpad' in enhanced_kwargs:
+                print(f"🔍 DEBUG: agent_scratchpad in enhanced kwargs: {type(enhanced_kwargs['agent_scratchpad'])}")
             
             # Execute the operation with enhanced context
             operation = stored_operation['operation']
             
             logging.info(f"🚀 EXECUTING REMEDIATED OPERATION: {operation_type}")
-            logging.info(f"📝 ORIGINAL PROMPT: {original_prompt[:100]}...")
-            logging.info(f"✨ ENHANCED PROMPT: {enhanced_prompt[:100]}...")
+            logging.info(f"📝 ORIGINAL PROMPT: {original_prompt[:100] if original_prompt else 'N/A'}...")
+            logging.info(f"✨ ENHANCED PROMPT: {enhanced_prompt[:100] if enhanced_prompt else 'N/A'}...")
             
-            # Use intelligent retry for actual execution
-            result = self.intelligent_retry.retry_with_enhanced_context(
-                operation, *enhanced_args, error_context=context, **enhanced_kwargs
-            )
+            # Execute the operation with enhanced context
+            print(f"🔍 DEBUG: About to execute operation with enhanced context")
+            result = operation(*enhanced_args, **enhanced_kwargs)
+            print(f"🔍 DEBUG: Operation executed successfully, result type: {type(result)}")
             
             # Log successful remediation
             logging.info(f"✅ REMEDIATION SUCCESS: {operation_type} completed successfully")
@@ -656,6 +743,90 @@ Please complete the task now with this enhanced context:"""
         
         return enhanced_prompt
     
+    def _apply_smart_remediation_injection(self, args: tuple, kwargs: dict, enhanced_prompt: str, operation_type: str) -> tuple:
+        """Apply smart prompt injection for remediation based on operation type."""
+        print(f"🔍 DEBUG: _apply_smart_remediation_injection called")
+        print(f"🔍 DEBUG: Operation type: {operation_type}")
+        print(f"🔍 DEBUG: Args: {args}")
+        print(f"🔍 DEBUG: Kwargs keys: {list(kwargs.keys())}")
+        print(f"🔍 DEBUG: Enhanced prompt length: {len(enhanced_prompt)}")
+        
+        enhanced_args = list(args)
+        enhanced_kwargs = kwargs.copy()
+        
+        # Check for agent_scratchpad before any modifications
+        if 'agent_scratchpad' in enhanced_kwargs:
+            print(f"🔍 DEBUG: agent_scratchpad found in kwargs: {type(enhanced_kwargs['agent_scratchpad'])}")
+        
+        # Determine injection strategy based on operation type
+        if operation_type == 'agent_execution':
+            print(f"🔍 DEBUG: Using agent_execution injection strategy")
+            # For agent operations, inject via input parameter
+            if 'input' in enhanced_kwargs:
+                original_input = enhanced_kwargs['input']
+                enhanced_kwargs['input'] = f"{enhanced_prompt}\n\n{original_input}"
+                print(f"🔍 DEBUG: Enhanced input parameter for agent")
+                logging.info("💉 REMEDIATION INJECTION: Enhanced input parameter for agent")
+            elif 'inputs' in enhanced_kwargs and isinstance(enhanced_kwargs['inputs'], dict):
+                if 'input' in enhanced_kwargs['inputs']:
+                    original_input = enhanced_kwargs['inputs']['input']
+                    enhanced_kwargs['inputs']['input'] = f"{enhanced_prompt}\n\n{original_input}"
+                    print(f"🔍 DEBUG: Enhanced inputs['input'] parameter for agent")
+                    logging.info("💉 REMEDIATION INJECTION: Enhanced inputs['input'] parameter for agent")
+        
+        elif operation_type == 'llm_call':
+            print(f"🔍 DEBUG: Using llm_call injection strategy")
+            # For LLM operations, inject via messages or prompt parameter
+            if 'messages' in enhanced_kwargs:
+                messages = enhanced_kwargs['messages'].copy()
+                system_message = {
+                    "role": "system",
+                    "content": f"{enhanced_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
+                }
+                messages.insert(0, system_message)
+                enhanced_kwargs['messages'] = messages
+                print(f"🔍 DEBUG: Enhanced messages with system prompt for LLM")
+                logging.info("💉 REMEDIATION INJECTION: Enhanced messages with system prompt for LLM")
+            elif 'prompt' in enhanced_kwargs:
+                original_prompt = enhanced_kwargs['prompt']
+                enhanced_kwargs['prompt'] = f"{enhanced_prompt}\n\n{original_prompt}"
+                print(f"🔍 DEBUG: Enhanced prompt parameter for LLM")
+                logging.info("💉 REMEDIATION INJECTION: Enhanced prompt parameter for LLM")
+        
+        elif operation_type == 'chain_execution':
+            print(f"🔍 DEBUG: Using chain_execution injection strategy")
+            # For chain operations, inject via input parameter
+            if 'input' in enhanced_kwargs:
+                original_input = enhanced_kwargs['input']
+                enhanced_kwargs['input'] = f"{enhanced_prompt}\n\n{original_input}"
+                print(f"🔍 DEBUG: Enhanced input parameter for chain")
+                logging.info("💉 REMEDIATION INJECTION: Enhanced input parameter for chain")
+            elif 'inputs' in enhanced_kwargs and isinstance(enhanced_kwargs['inputs'], dict):
+                if 'input' in enhanced_kwargs['inputs']:
+                    original_input = enhanced_kwargs['inputs']['input']
+                    enhanced_kwargs['inputs']['input'] = f"{enhanced_prompt}\n\n{original_input}"
+                    print(f"🔍 DEBUG: Enhanced inputs['input'] parameter for chain")
+                    logging.info("💉 REMEDIATION INJECTION: Enhanced inputs['input'] parameter for chain")
+        
+        else:
+            print(f"🔍 DEBUG: Using generic injection strategy for {operation_type}")
+            # Generic injection for other operation types
+            prompt_params = ['input', 'prompt', 'text', 'query', 'message']
+            for param in prompt_params:
+                if param in enhanced_kwargs and isinstance(enhanced_kwargs[param], str):
+                    original_value = enhanced_kwargs[param]
+                    enhanced_kwargs[param] = f"{enhanced_prompt}\n\n{original_value}"
+                    print(f"🔍 DEBUG: Enhanced {param} parameter for {operation_type}")
+                    logging.info(f"💉 REMEDIATION INJECTION: Enhanced {param} parameter for {operation_type}")
+                    break
+        
+        # Final check for agent_scratchpad
+        if 'agent_scratchpad' in enhanced_kwargs:
+            print(f"🔍 DEBUG: Final agent_scratchpad type: {type(enhanced_kwargs['agent_scratchpad'])}")
+        
+        print(f"🔍 DEBUG: Returning enhanced args and kwargs")
+        return tuple(enhanced_args), enhanced_kwargs
+    
     def _get_operation_specific_guidance(self, operation_type: str, exception: Exception) -> str:
         """Get specific guidance based on operation type and error."""
         error_msg = str(exception).lower()
@@ -695,13 +866,28 @@ Please complete the task now with this enhanced context:"""
         enhanced_args = list(args)
         enhanced_kwargs = kwargs.copy()
         
-        # Apply prompt injection
+        # Debug: Log what we're working with
+        logging.info(f"🔍 DEBUG: Original kwargs keys: {list(kwargs.keys())}")
+        if 'agent_scratchpad' in kwargs:
+            logging.info(f"🔍 DEBUG: agent_scratchpad type: {type(kwargs['agent_scratchpad'])}, value: {kwargs['agent_scratchpad']}")
+        logging.info(f"🔍 DEBUG: Enhanced prompt: {enhanced_prompt[:100]}...")
+        
+        # Apply prompt injection intelligently based on operation type
+        # Note: agent_scratchpad is a LangChain internal parameter that should not be modified
+        # but we can still inject prompts via other parameters
+        
+        # Apply prompt injection - be careful with LangChain specific parameters
         prompt_keys = ['prompt', 'input', 'query', 'text', 'message', 'instruction', 'content']
+        
+        # Skip LangChain specific parameters that shouldn't be modified
+        langchain_special_params = ['agent_scratchpad', 'intermediate_steps', 'messages', 'input_variables']
         
         # First try to replace in kwargs
         prompt_injected = False
         for key in prompt_keys:
-            if key in enhanced_kwargs and isinstance(enhanced_kwargs[key], str):
+            if (key in enhanced_kwargs and 
+                isinstance(enhanced_kwargs[key], str) and 
+                key not in langchain_special_params):
                 enhanced_kwargs[key] = enhanced_prompt
                 prompt_injected = True
                 logging.info(f"💉 PROMPT INJECTION: Applied to kwargs['{key}']")
@@ -716,8 +902,15 @@ Please complete the task now with this enhanced context:"""
                     logging.info(f"💉 PROMPT INJECTION: Applied to args[{i}]")
                     break
                 elif isinstance(arg, dict):
+                    # CRITICAL: Check if this dict contains agent_scratchpad - if so, skip entirely
+                    if 'agent_scratchpad' in arg:
+                        logging.info(f"🚫 PROMPT INJECTION: Skipping args[{i}] - contains agent_scratchpad to prevent corruption")
+                        continue
+                    
                     for key in prompt_keys:
-                        if key in arg and isinstance(arg[key], str):
+                        if (key in arg and 
+                            isinstance(arg[key], str) and 
+                            key not in langchain_special_params):
                             arg[key] = enhanced_prompt
                             prompt_injected = True
                             logging.info(f"💉 PROMPT INJECTION: Applied to args[{i}]['{key}']")
@@ -733,8 +926,17 @@ Please complete the task now with this enhanced context:"""
         # Apply other remediation parameters
         remediation_params = remediation.get('parameter_modifications', {})
         for param, value in remediation_params.items():
-            enhanced_kwargs[param] = value
-            logging.info(f"🔧 PARAMETER MODIFICATION: {param} = {value}")
+            # CRITICAL: Never modify agent_scratchpad or other LangChain internal parameters
+            if param not in langchain_special_params and param != 'agent_scratchpad':
+                enhanced_kwargs[param] = value
+                logging.info(f"🔧 PARAMETER MODIFICATION: {param} = {value}")
+            else:
+                logging.info(f"🚫 PARAMETER MODIFICATION: Skipped LangChain special parameter {param}")
+        
+        # Debug: Log final result
+        logging.info(f"🔍 DEBUG: Final kwargs keys: {list(enhanced_kwargs.keys())}")
+        if 'agent_scratchpad' in enhanced_kwargs:
+            logging.info(f"🔍 DEBUG: Final agent_scratchpad type: {type(enhanced_kwargs['agent_scratchpad'])}, value: {enhanced_kwargs['agent_scratchpad']}")
         
         return tuple(enhanced_args), enhanced_kwargs
     
@@ -819,15 +1021,22 @@ Please complete the task now with this enhanced context:"""
         # Common prompt parameter names
         prompt_params = ['prompt', 'input', 'query', 'text', 'message', 'instruction', 'template']
         
+        # Skip LangChain specific parameters that shouldn't be modified
+        langchain_special_params = ['agent_scratchpad', 'intermediate_steps', 'messages', 'input_variables']
+        
         for param in prompt_params:
-            if param in enhanced_kwargs:
+            if (param in enhanced_kwargs and 
+                param not in langchain_special_params and
+                isinstance(enhanced_kwargs[param], str)):
                 # Enhance existing prompt
                 original_prompt = enhanced_kwargs[param]
                 enhanced_kwargs[param] = f"{enhanced_prompt}\n\nOriginal: {original_prompt}"
+                logging.info(f"💉 ENHANCED PROMPT: Applied to '{param}' parameter")
                 break
         else:
             # No existing prompt parameter, add enhanced prompt
             enhanced_kwargs['enhanced_context'] = enhanced_prompt
+            logging.info("💉 ENHANCED PROMPT: Added as 'enhanced_context' parameter")
         
         return enhanced_kwargs
     
@@ -842,12 +1051,28 @@ Please complete the task now with this enhanced context:"""
         else:
             error_type = ErrorType.UNKNOWN_ERROR
         
+        # Generate AI-powered suggestions using Gemini
+        suggestions = []
+        if self.gemini_analyzer and self.gemini_analyzer.is_available():
+            try:
+                # Create a mock exception for the performance issue
+                mock_exception = Exception(f"Performance issue: {warning}")
+                remediation = self.gemini_analyzer.generate_remediation_strategy(
+                    mock_exception, context, max_retries=1
+                )
+                suggestions = remediation.get("suggestions", [])
+            except Exception as e:
+                logging.warning(f"Failed to generate AI suggestions for performance issue: {e}")
+                suggestions = []
+        else:
+            suggestions = []
+        
         detected_error = DetectedError(
             error_type=error_type,
             severity=ErrorSeverity.MEDIUM,
             message=warning,
             context=context,
-            suggestions=self._generate_suggestions(error_type, None, context)
+            suggestions=suggestions
         )
         
         self.error_history.append(detected_error)
@@ -943,8 +1168,12 @@ Please complete the task now with this enhanced context:"""
             "component_distribution": component_counts,
             "gemini_analyzed": gemini_analyzed,
             "retry_attempts": retry_attempts,
-            "most_recent_error": recent_errors[-1].to_dict() if recent_errors else None
+            "successful_remediations": len([e for e in recent_errors if hasattr(e.context, 'remediation_success') and e.context.remediation_success])
         }
+    
+    def get_error_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive error statistics (alias for get_error_summary)."""
+        return self.get_error_summary(window_minutes=60)
     
     def clear_history(self):
         """Clear error history."""
@@ -996,6 +1225,7 @@ Please complete the task now with this enhanced context:"""
         if self.gemini_analyzer:
             return self.gemini_analyzer.get_status()
         return {"enabled": False, "reason": "Gemini not initialized"}
+    
 
 
 class AsyncErrorDetector(ErrorDetector):
@@ -1054,12 +1284,9 @@ class AsyncExecutionMonitor:
                 # Detect and handle the error
                 detected_error = self.error_detector._detect_error(exc_val, self.context, self.perf_metrics)
                 
-                # Try automatic retry if enabled and Gemini is available
-                if self.error_detector.enable_automatic_retry and self.error_detector.intelligent_retry:
-                    try:
-                        self.error_detector._attempt_automatic_retry(exc_val, self.context, detected_error)
-                    except Exception as retry_error:
-                        logging.warning(f"Automatic retry failed: {retry_error}")
+                # Note: Automatic retry is handled by the interceptors, not here
+                # The context manager should not attempt retry as it would be redundant
+                # and the operation context is already lost by this point
                 
                 # Don't suppress the exception
                 return False

@@ -12,11 +12,17 @@ tests/
 ├── integration/             # Integration tests with real agents
 │   └── test_auto_integration.py
 ├── functional/              # Functional tests with real API calls
-│   └── test_validation_system.py
+│   ├── test_aigie_error_remediation.py      # Comprehensive error remediation tests
+│   ├── test_advanced_langgraph_scenarios.py # Advanced LangGraph scenarios
+│   ├── test_runtime_quality_assurance.py    # Runtime quality assurance tests
+│   ├── test_validation_demo.py              # Validation system demo
+│   └── test_validation_system.py            # Validation system tests
 ├── e2e/                     # End-to-end system tests
 │   └── test_complete_system.py
 ├── fixtures/                # Test fixtures and data
 ├── run_tests.py            # Unified test runner
+├── run_comprehensive_aigie_tests.py         # Comprehensive test runner
+├── AIGIE_TEST_RESULTS_DOCUMENTATION.md     # Test results documentation
 └── README.md               # This file
 ```
 
@@ -35,10 +41,16 @@ tests/
 - **Speed**: Medium (1-10 seconds per test)
 
 ### Functional Tests (`functional/`)
-- **Purpose**: Test complete functionality with real API calls
-- **Scope**: Validation system, context extraction, LLM integration
+- **Purpose**: Test complete functionality with real API calls and real-world scenarios
+- **Scope**: Error remediation, LangGraph scenarios, quality assurance, validation system
 - **Dependencies**: Gemini API key required
-- **Speed**: Medium (5-30 seconds per test)
+- **Speed**: Medium to Slow (5-60 seconds per test)
+- **Key Tests**:
+  - `test_aigie_error_remediation.py` - Comprehensive error remediation with real LangChain/LangGraph workflows
+  - `test_advanced_langgraph_scenarios.py` - Advanced LangGraph multi-agent scenarios
+  - `test_runtime_quality_assurance.py` - Runtime quality assurance and performance monitoring
+  - `test_validation_demo.py` - Validation system demonstration
+  - `test_validation_system.py` - Core validation system tests
 
 ### End-to-End Tests (`e2e/`)
 - **Purpose**: Test complete system with comprehensive scenarios
@@ -79,9 +91,16 @@ python tests/integration/test_auto_integration.py
 
 # Functional tests
 python tests/functional/test_validation_system.py
+python tests/functional/test_aigie_error_remediation.py
+python tests/functional/test_advanced_langgraph_scenarios.py
+python tests/functional/test_runtime_quality_assurance.py
+python tests/functional/test_validation_demo.py
 
 # E2E tests
 python tests/e2e/test_complete_system.py
+
+# Comprehensive test runner
+python tests/run_comprehensive_aigie_tests.py
 ```
 
 ## Test Requirements

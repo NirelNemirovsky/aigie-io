@@ -9,6 +9,8 @@ from typing import Dict, Any, Optional, List, Tuple
 from datetime import datetime
 import logging
 
+from pydantic import BaseModel, Field, ValidationError
+
 # Try to import both Vertex AI and Gemini API key SDKs
 try:
     import vertexai
@@ -24,6 +26,42 @@ except ImportError:
     GEMINI_API_KEY_AVAILABLE = False
 
 from ..types.error_types import ErrorType, ErrorSeverity, DetectedError, ErrorContext
+
+
+class ErrorAnalysis(BaseModel):
+    """Pydantic model for error analysis results."""
+    error_type: str = Field(..., description="Type of error detected")
+    severity: str = Field(..., description="Severity level of the error")
+    suggestions: List[str] = Field(..., description="List of remediation suggestions")
+    is_retryable: bool = Field(default=True, description="Whether the error can be retried (defaults to True for demonstration)")
+    confidence: float = Field(default=0.8, description="Confidence score for the analysis")
+    analysis_summary: str = Field(..., description="Summary of the error analysis")
+    
+    class Config:
+        # Allow extra fields that might be present in Gemini responses
+        extra = "ignore"
+
+
+class PromptInjectionResult(BaseModel):
+    """Pydantic model for prompt injection results."""
+    enhanced_prompt: str = Field(default="Please retry the operation with enhanced context and error handling.", description="Enhanced prompt with injection")
+    prompt_injection_hints: List[str] = Field(default_factory=list, description="Hints for the injection")
+    confidence: float = Field(default=0.8, description="Confidence in the injection")
+    
+    class Config:
+        # Allow extra fields that might be present in Gemini responses
+        extra = "ignore"
+
+
+class RemediationStrategy(BaseModel):
+    """Pydantic model for remediation strategy results."""
+    retry_strategy: Dict[str, Any] = Field(default_factory=dict, description="Retry strategy details")
+    confidence: float = Field(default=0.8, description="Confidence in the remediation")
+    approach: str = Field(default="retry", description="Remediation approach")
+    
+    class Config:
+        # Allow extra fields that might be present in Gemini responses
+        extra = "ignore"
 
 
 class GeminiAnalyzer:
@@ -255,13 +293,12 @@ ANALYSIS TASK:
 3. Provide 3-5 specific, actionable suggestions for fixing the error
 
 4. Identify if this is a retryable error
-
 RESPONSE FORMAT (JSON):
 {{
     "error_type": "ERROR_TYPE_HERE",
     "severity": "SEVERITY_HERE",
     "suggestions": ["suggestion1", "suggestion2", "suggestion3"],
-    "is_retryable": true/false,
+    "is_retryable": true,
     "confidence": 0.95,
     "analysis_summary": "Brief summary of what went wrong"
 }}
@@ -295,40 +332,57 @@ Generate a SPECIFIC remediation strategy that can be automatically applied:
 3. **Implementation Steps**: Step-by-step actions to implement the fix
 4. **Confidence**: 0.0 to 1.0 based on fix certainty
 
-REQUIRED PARAMETER MODIFICATIONS:
-You MUST provide specific values for these parameters based on the error type:
+REQUIRED STRUCTURED REMEDIATION OUTPUT:
+You MUST provide a structured remediation response with these exact fields:
 
 {{
+    "remediation_strategies": [
+        {{
+            "type": "error_handling",
+            "action": "specific_action_name",
+            "details": {{
+                "param1": "value1",
+                "param2": "value2"
+            }}
+        }}
+    ],
+    "specific_fixes": {{
+        "fix_type_1": {{
+            "param_name": "value",
+            "another_param": "value"
+        }},
+        "fix_type_2": "simple_value"
+    }},
+    "configuration_changes": {{
+        "timeout": 30,
+        "max_wait": 60,
+        "batch_size": 1,
+        "streaming": true,
+        "circuit_breaker_enabled": true,
+        "circuit_breaker_threshold": 3,
+        "retry_on_failure": true,
+        "connection_pool_size": 10,
+        "validate_input": true,
+        "clean_input": true,
+        "sanitize_input": true,
+        "rate_limit_delay": 5.0,
+        "exponential_backoff": true,
+        "reset_state": true,
+        "state_validation": true,
+        "max_concurrent": 5,
+        "synchronization": true
+    }},
     "retry_strategy": {{
         "approach": "specific retry method with exact steps",
-        "max_retries": number,
-        "backoff_delay": number
-    }},
-    "parameter_modifications": {{
-        "timeout": number,
-        "max_wait": number,
-        "batch_size": number,
-        "streaming": boolean,
-        "circuit_breaker_enabled": boolean,
-        "circuit_breaker_threshold": number,
-        "retry_on_failure": boolean,
-        "connection_pool_size": number,
-        "validate_input": boolean,
-        "clean_input": boolean,
-        "sanitize_input": boolean,
-        "rate_limit_delay": number,
-        "exponential_backoff": boolean,
-        "reset_state": boolean,
-        "state_validation": boolean,
-        "max_concurrent": number,
-        "synchronization": boolean
+        "max_retries": 3,
+        "backoff_delay": 2.0
     }},
     "implementation_steps": [
         "Step 1: specific action to take",
         "Step 2: specific action to take",
         "Step 3: specific action to take"
     ],
-    "confidence": number_between_0_and_1,
+    "confidence": 0.95,
     "fix_description": "Brief description of what the fix does"
 }}
 
@@ -353,8 +407,13 @@ Generate a concrete remediation plan now:
     def _create_prompt_injection_prompt(self, error: Exception, context: ErrorContext, 
                                        stored_operation: Dict[str, Any], detected_error: 'DetectedError') -> str:
         """Create a specialized prompt for generating prompt injection remediation."""
-        operation_type = stored_operation.get('operation_type', 'unknown')
-        original_prompt = stored_operation.get('original_prompt', 'N/A')
+        # Safely extract operation details with proper null checks
+        operation_type = 'unknown'
+        original_prompt = 'N/A'
+        
+        if stored_operation:
+            operation_type = stored_operation.get('operation_type', 'unknown')
+            original_prompt = stored_operation.get('original_prompt', 'N/A')
         
         return f"""
 You are an expert AI remediation specialist focused on PROMPT INJECTION for error recovery. 
@@ -367,7 +426,7 @@ FAILED OPERATION DETAILS:
 - Component: {context.component}
 - Method: {context.method}
 - Timestamp: {context.timestamp}
-- Original Prompt: {original_prompt[:200]}...
+- Original Prompt: {original_prompt}
 
 ERROR ANALYSIS:
 - Severity: {detected_error.severity.value}
@@ -419,38 +478,243 @@ IMPORTANT GUIDELINES:
 Generate the prompt injection remediation now:"""
     
     def _parse_gemini_response(self, response_text: str) -> Dict[str, Any]:
-        """Parse Gemini's response into structured data with robust error handling."""
+        """Parse Gemini's response into structured data using a flexible approach."""
         try:
-            # Try to extract JSON from the response
-            if "{" in response_text and "}" in response_text:
-                start = response_text.find("{")
-                end = response_text.rfind("}") + 1
-                json_str = response_text[start:end]
+            # Debug logging
+            logging.debug(f"Parsing Gemini response: {response_text[:300]}...")
+            
+            # First, try to extract JSON from markdown code blocks
+            json_str = self._extract_json_from_markdown(response_text)
+            
+            if json_str:
+                logging.debug(f"Extracted JSON string: {json_str[:500]}...")
                 
-                # More robust JSON cleaning
-                json_str = self._clean_json_string(json_str)
-                
+                # Try to parse with a more flexible approach
                 try:
-                    return json.loads(json_str)
-                except json.JSONDecodeError as json_error:
-                    logging.warning(f"JSON parsing failed after cleaning: {json_error}")
-                    # Try to fix common JSON issues
-                    json_str = self._fix_common_json_issues(json_str)
-                    try:
-                        return json.loads(json_str)
-                    except json.JSONDecodeError:
-                        logging.warning("All JSON parsing attempts failed, using fallback")
-                        return self._parse_text_response(response_text)
+                    # Use a more robust JSON parsing approach
+                    parsed_data = self._parse_flexible_json(json_str)
+                    
+                    if parsed_data:
+                        # Validate with Pydantic
+                        analysis = ErrorAnalysis(**parsed_data)
+                        result = analysis.dict()
+                        logging.debug(f"Successfully parsed and validated with Pydantic: {result}")
+                        return result
+                    else:
+                        raise Exception("Failed to parse JSON data")
+                        
+                except (Exception, ValidationError) as e:
+                    logging.warning(f"Flexible parsing failed: {e}")
+                    logging.warning("Using fallback parsing")
+                    return self._parse_text_response(response_text)
             else:
                 # Fallback parsing
+                logging.debug("No JSON found, using fallback parsing")
                 return self._parse_text_response(response_text)
                 
         except Exception as e:
             logging.warning(f"Failed to parse Gemini response: {e}")
             return self._parse_text_response(response_text)
     
+    def _extract_json_from_markdown(self, response_text: str) -> Optional[str]:
+        """Extract JSON from markdown code blocks."""
+        import re
+        
+        # Debug logging
+        logging.debug(f"Extracting JSON from response: {response_text[:500]}...")
+        
+        # Try to extract JSON from ```json ... ``` blocks
+        json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if json_match:
+            logging.debug("Found JSON in markdown code block")
+            return json_match.group(1)
+        
+        # Try to extract JSON from ``` ... ``` blocks (without json specifier)
+        code_match = re.search(r'```\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+        if code_match:
+            logging.debug("Found JSON in generic code block")
+            return code_match.group(1)
+        
+        # Try to find JSON object directly
+        if "{" in response_text and "}" in response_text:
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
+            json_str = response_text[start:end]
+            logging.debug(f"Found JSON object directly: {json_str[:100]}...")
+            return json_str
+        
+        logging.debug("No JSON found in response")
+        return None
+    
+    def _parse_flexible_json(self, json_str: str) -> Optional[Dict[str, Any]]:
+        """Parse JSON with flexible handling of malformed content."""
+        import re
+        
+        try:
+            # First, try standard JSON parsing
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+        
+        # If that fails, try to extract the data using regex patterns
+        try:
+            result = {}
+            
+            # Extract error_type
+            error_type_match = re.search(r'"error_type":\s*"([^"]+)"', json_str)
+            if error_type_match:
+                result['error_type'] = error_type_match.group(1)
+            
+            # Extract severity
+            severity_match = re.search(r'"severity":\s*"([^"]+)"', json_str)
+            if severity_match:
+                result['severity'] = severity_match.group(1)
+            
+            # Extract suggestions (handle multiline strings)
+            suggestions_match = re.search(r'"suggestions":\s*\[(.*?)\]', json_str, re.DOTALL)
+            if suggestions_match:
+                suggestions_text = suggestions_match.group(1)
+                # Extract individual suggestion strings
+                suggestion_matches = re.findall(r'"([^"]*(?:\\"[^"]*)*)"', suggestions_text)
+                result['suggestions'] = [s.replace('\\"', '"') for s in suggestion_matches]
+            
+            # Extract is_retryable (with default)
+            retryable_match = re.search(r'"is_retryable":\s*(true|false)', json_str)
+            if retryable_match:
+                result['is_retryable'] = retryable_match.group(1) == 'true'
+            else:
+                result['is_retryable'] = True  # Default to retryable
+            
+            # Extract confidence (with default)
+            confidence_match = re.search(r'"confidence":\s*([0-9.]+)', json_str)
+            if confidence_match:
+                result['confidence'] = float(confidence_match.group(1))
+            else:
+                result['confidence'] = 0.8  # Default confidence
+            
+            # Extract analysis_summary
+            summary_match = re.search(r'"analysis_summary":\s*"([^"]*(?:\\"[^"]*)*)"', json_str)
+            if summary_match:
+                result['analysis_summary'] = summary_match.group(1).replace('\\"', '"')
+            
+            # Ensure we have the required fields
+            if 'error_type' in result and 'severity' in result and 'suggestions' in result and 'analysis_summary' in result:
+                logging.debug(f"Successfully extracted data using flexible parsing: {result}")
+                return result
+            else:
+                logging.warning(f"Missing required fields in flexible parsing: {result}")
+                return None
+                
+        except Exception as e:
+            logging.warning(f"Flexible JSON parsing failed: {e}")
+            return None
+    
+    def _parse_flexible_prompt_injection_json(self, json_str: str) -> Optional[Dict[str, Any]]:
+        """Parse prompt injection JSON with flexible handling of malformed content."""
+        import re
+        
+        try:
+            # First, try standard JSON parsing
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+        
+        # If that fails, try to extract the data using regex patterns
+        try:
+            result = {}
+            
+            # Extract enhanced_prompt (try multiple patterns)
+            prompt_match = re.search(r'"enhanced_prompt":\s*"([^"]*(?:\\"[^"]*)*)"', json_str)
+            if prompt_match:
+                result['enhanced_prompt'] = prompt_match.group(1).replace('\\"', '"')
+            else:
+                # Try alternative patterns for enhanced_prompt
+                prompt_match = re.search(r'"enhanced_prompt":\s*"([^"]*)"', json_str, re.DOTALL)
+                if prompt_match:
+                    result['enhanced_prompt'] = prompt_match.group(1).replace('\\"', '"')
+                else:
+                    # If no enhanced_prompt found, create a default one
+                    result['enhanced_prompt'] = "Please retry the operation with the following considerations: " + "; ".join(result.get('prompt_injection_hints', []))
+            
+            # Extract prompt_injection_hints (handle multiline strings)
+            hints_match = re.search(r'"prompt_injection_hints":\s*\[(.*?)\]', json_str, re.DOTALL)
+            if hints_match:
+                hints_text = hints_match.group(1)
+                # Extract individual hint strings
+                hint_matches = re.findall(r'"([^"]*(?:\\"[^"]*)*)"', hints_text)
+                result['prompt_injection_hints'] = [h.replace('\\"', '"') for h in hint_matches]
+            else:
+                result['prompt_injection_hints'] = []  # Default empty list
+            
+            # Extract confidence (with default)
+            confidence_match = re.search(r'"confidence":\s*([0-9.]+)', json_str)
+            if confidence_match:
+                result['confidence'] = float(confidence_match.group(1))
+            else:
+                result['confidence'] = 0.8  # Default confidence
+            
+            # Ensure we have the required fields
+            if 'enhanced_prompt' in result:
+                logging.debug(f"Successfully extracted prompt injection data using flexible parsing: {result}")
+                return result
+            else:
+                logging.warning(f"Missing required fields in flexible prompt injection parsing: {result}")
+                return None
+                
+        except Exception as e:
+            logging.warning(f"Flexible prompt injection JSON parsing failed: {e}")
+            return None
+    
+    def _parse_flexible_remediation_json(self, json_str: str) -> Optional[Dict[str, Any]]:
+        """Parse remediation JSON with flexible handling of malformed content."""
+        import re
+        
+        try:
+            # First, try standard JSON parsing
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+        
+        # If that fails, try to extract the data using regex patterns
+        try:
+            result = {}
+            
+            # Extract retry_strategy (handle complex nested objects)
+            strategy_match = re.search(r'"retry_strategy":\s*(\{.*?\})', json_str, re.DOTALL)
+            if strategy_match:
+                try:
+                    strategy_data = json.loads(strategy_match.group(1))
+                    result['retry_strategy'] = strategy_data
+                except json.JSONDecodeError:
+                    result['retry_strategy'] = {"approach": "retry", "max_attempts": 3}
+            else:
+                result['retry_strategy'] = {"approach": "retry", "max_attempts": 3}
+            
+            # Extract confidence (with default)
+            confidence_match = re.search(r'"confidence":\s*([0-9.]+)', json_str)
+            if confidence_match:
+                result['confidence'] = float(confidence_match.group(1))
+            else:
+                result['confidence'] = 0.8  # Default confidence
+            
+            # Extract approach (with default)
+            approach_match = re.search(r'"approach":\s*"([^"]+)"', json_str)
+            if approach_match:
+                result['approach'] = approach_match.group(1)
+            else:
+                result['approach'] = "retry"  # Default approach
+            
+            logging.debug(f"Successfully extracted remediation data using flexible parsing: {result}")
+            return result
+                
+        except Exception as e:
+            logging.warning(f"Flexible remediation JSON parsing failed: {e}")
+            return None
+    
     def _clean_json_string(self, json_str: str) -> str:
-        """Clean JSON string for better parsing."""
+        """Clean JSON string for better parsing using a more robust approach."""
+        import re
+        
         # Replace single quotes with double quotes (but be careful with apostrophes)
         json_str = json_str.replace("'", '"')
         
@@ -460,10 +724,8 @@ Generate the prompt injection remediation now:"""
         json_str = json_str.replace("None", "null")
         
         # Remove trailing commas
-        import re
         json_str = re.sub(r',\s*}', '}', json_str)
-        json_str = re.sub(r',\s*]', ']', json_str)
-        
+        json_str = re.sub(r',\s*]', ']', json_str)    
         return json_str
     
     def _fix_common_json_issues(self, json_str: str) -> str:
@@ -483,26 +745,78 @@ Generate the prompt injection remediation now:"""
         return json_str
     
     def _parse_remediation_response(self, response_text: str) -> Dict[str, Any]:
-        """Parse Gemini's remediation response."""
-        return self._parse_gemini_response(response_text)
+        """Parse Gemini's remediation response using Pydantic."""
+        try:
+            # Debug logging
+            logging.debug(f"Parsing remediation response: {response_text[:300]}...")
+            
+            # First, try to extract JSON from markdown code blocks
+            json_str = self._extract_json_from_markdown(response_text)
+            
+            if json_str:
+                logging.debug(f"Extracted JSON string: {json_str[:500]}...")
+                
+                # Try to parse with flexible approach
+                try:
+                    # Use flexible parsing for remediation
+                    parsed_data = self._parse_flexible_remediation_json(json_str)
+                    
+                    if parsed_data:
+                        # Validate with Pydantic
+                        remediation_result = RemediationStrategy(**parsed_data)
+                        result = remediation_result.dict()
+                        logging.debug(f"Successfully parsed remediation with Pydantic: {result}")
+                        return result
+                    else:
+                        raise Exception("Failed to parse remediation JSON data")
+                        
+                except (Exception, ValidationError) as e:
+                    logging.warning(f"Flexible remediation parsing failed: {e}")
+                    logging.warning("Using fallback parsing")
+                    return self._parse_text_response(response_text)
+            else:
+                # Fallback parsing
+                logging.debug("No JSON found, using fallback parsing")
+                return self._parse_text_response(response_text)
+            
+        except Exception as e:
+            logging.warning(f"Failed to parse remediation response: {e}")
+            return self._parse_text_response(response_text)
     
     def _parse_prompt_injection_response(self, response_text: str) -> Dict[str, Any]:
-        """Parse Gemini's prompt injection remediation response."""
+        """Parse Gemini's prompt injection remediation response using Pydantic."""
         try:
-            parsed = self._parse_gemini_response(response_text)
+            # Debug logging
+            logging.debug(f"Parsing prompt injection response: {response_text[:300]}...")
             
-            # Ensure required fields are present
-            if 'prompt_injection_hints' not in parsed:
-                parsed['prompt_injection_hints'] = [
-                    "Previous attempt failed, try a different approach",
-                    "Be more careful and specific in your response",
-                    "Consider alternative methods if the first approach doesn't work"
-                ]
+            # First, try to extract JSON from markdown code blocks
+            json_str = self._extract_json_from_markdown(response_text)
             
-            if 'confidence' not in parsed:
-                parsed['confidence'] = 0.7
-            
-            return parsed
+            if json_str:
+                logging.debug(f"Extracted JSON string: {json_str[:500]}...")
+                
+                # Try to parse with flexible approach
+                try:
+                    # Use flexible parsing for prompt injection
+                    parsed_data = self._parse_flexible_prompt_injection_json(json_str)
+                    
+                    if parsed_data:
+                        # Validate with Pydantic
+                        injection_result = PromptInjectionResult(**parsed_data)
+                        result = injection_result.dict()
+                        logging.debug(f"Successfully parsed prompt injection with Pydantic: {result}")
+                        return result
+                    else:
+                        raise Exception("Failed to parse prompt injection JSON data")
+                        
+                except (Exception, ValidationError) as e:
+                    logging.warning(f"Flexible prompt injection parsing failed: {e}")
+                    logging.warning("Using fallback parsing")
+                    return self._parse_text_response(response_text)
+            else:
+                # Fallback parsing
+                logging.debug("No JSON found, using fallback parsing")
+                return self._parse_text_response(response_text)
             
         except Exception as e:
             logging.warning(f"Failed to parse prompt injection response: {e}")
@@ -529,7 +843,7 @@ Generate the prompt injection remediation now:"""
         analysis = {
             "error_type": "runtime_exception",  # Use lowercase enum value
             "severity": "medium",  # Use lowercase enum value
-            "suggestions": ["Review the error message", "Check component configuration"],
+            "suggestions": [],
             "is_retryable": True,
             "confidence": 0.5,
             "analysis_summary": "Error analysis completed with fallback parsing"
@@ -567,7 +881,7 @@ Generate the prompt injection remediation now:"""
         """Validate that the analysis contains all required fields."""
         required_fields = ['error_type', 'severity', 'suggestions', 'is_retryable', 'confidence']
         for field in required_fields:
-            if not analysis.get(field):
+            if field not in analysis:
                 logging.warning(f"Analysis missing required field: {field}")
                 return False
         
@@ -590,16 +904,11 @@ Generate the prompt injection remediation now:"""
     
     def _validate_remediation(self, remediation: Dict[str, Any]) -> bool:
         """Validate that the remediation strategy contains all required fields."""
-        required_fields = ['retry_strategy', 'parameter_modifications', 'implementation_steps', 'confidence']
+        required_fields = ['retry_strategy', 'confidence']
         for field in required_fields:
             if field not in remediation:
                 logging.warning(f"Remediation missing required field: {field}")
                 return False
-        
-        # Check that implementation_steps is a non-empty list
-        if not isinstance(remediation['implementation_steps'], list) or len(remediation['implementation_steps']) == 0:
-            logging.warning("Remediation missing implementation steps")
-            return False
             
         # Check confidence is a valid number
         try:

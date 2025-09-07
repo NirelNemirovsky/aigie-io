@@ -77,13 +77,13 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     """Configuration for the research assistant."""
-    # Error simulation rates
-    NETWORK_ERROR_RATE: float = 0.15
-    API_ERROR_RATE: float = 0.10
-    TIMEOUT_ERROR_RATE: float = 0.05
-    PROCESSING_ERROR_RATE: float = 0.20
-    CODE_GENERATION_ERROR_RATE: float = 0.15
-    MEMORY_LEAK_RATE: float = 0.10
+    # Error simulation rates (increased for demonstration)
+    NETWORK_ERROR_RATE: float = 0.40  # 40% chance of network errors
+    API_ERROR_RATE: float = 0.30      # 30% chance of API errors  
+    TIMEOUT_ERROR_RATE: float = 0.25  # 25% chance of timeout errors
+    PROCESSING_ERROR_RATE: float = 0.50  # 50% chance of processing errors
+    CODE_GENERATION_ERROR_RATE: float = 0.35  # 35% chance of code generation errors
+    MEMORY_LEAK_RATE: float = 0.30    # 30% chance of memory leaks
     
     # Limits and thresholds
     RATE_LIMIT_THRESHOLD: int = 5
@@ -374,6 +374,19 @@ class DocumentAnalysisTool(ResearchTool):
             self.config.MEMORY_LEAK_RATE,
             f"Memory leak detected - usage increased to {self.memory_usage:.1f}MB"
         )
+        
+        # Simulate additional error types for comprehensive testing
+        self._simulate_error(
+            ErrorType.DATA_CORRUPTION,
+            0.15,  # 15% chance of data corruption
+            "Data corruption detected - invalid document format"
+        )
+        
+        self._simulate_error(
+            ErrorType.RESOURCE_EXHAUSTION,
+            0.10,  # 10% chance of resource exhaustion
+            "Resource exhaustion - insufficient processing capacity"
+        )
     
     def reset_memory(self) -> None:
         """Reset memory usage (simulate garbage collection)."""
@@ -414,6 +427,19 @@ class CodeGenerationTool(ResearchTool):
                 ErrorType.CODE_GENERATION_ERROR,
                 self.config.CODE_GENERATION_ERROR_RATE,
                 "Code generation failed - invalid task description"
+            )
+            
+            # Simulate additional error types
+            self._simulate_error(
+                ErrorType.VALIDATION_ERROR,
+                0.20,  # 20% chance of validation errors
+                "Code validation failed - syntax errors detected"
+            )
+            
+            self._simulate_error(
+                ErrorType.SLOW_EXECUTION,
+                0.15,  # 15% chance of slow execution
+                "Code generation taking too long - performance issue"
             )
             
             # Generate code based on task (mock implementation)
@@ -624,6 +650,7 @@ def create_research_workflow(config: Config):
                         error_msg = f"Document analysis failed for '{doc.title}': {str(e)}"
                         state['errors'].append(error_msg)
                         logger.error(error_msg)
+                        raise  # Re-raise to let Aigie detect and remediate
                 
                 state['documents'] = [vars(doc) for doc in documents]
                 state['insights'] = insights
@@ -664,6 +691,7 @@ def create_research_workflow(config: Config):
                         error_msg = f"Code generation failed for '{task}': {str(e)}"
                         state['errors'].append(error_msg)
                         logger.error(error_msg)
+                        raise  # Re-raise to let Aigie detect and remediate
                 
                 state['code_snippets'] = code_snippets
                 state['current_step'] = WorkflowStep.CODE_GENERATION_COMPLETED.value

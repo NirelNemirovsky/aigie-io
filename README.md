@@ -227,6 +227,30 @@ aigie/
 ├── utils/                  # Utility functions
 ├── cli.py                  # Command-line interface
 └── auto_integration.py     # Automatic integration system
+
+tests/                      # Test suite
+├── unit/                   # Unit tests for individual components
+│   ├── test_core_components.py
+│   └── test_validation_components.py
+├── integration/            # Integration tests
+│   └── test_auto_integration.py
+├── functional/             # Functional tests for real-world scenarios
+│   ├── test_aigie_error_remediation.py      # Comprehensive error remediation tests
+│   ├── test_advanced_langgraph_scenarios.py # Advanced LangGraph scenarios
+│   ├── test_runtime_quality_assurance.py    # Runtime quality assurance tests
+│   ├── test_validation_demo.py              # Validation system demo
+│   └── test_validation_system.py            # Validation system tests
+├── e2e/                    # End-to-end tests
+│   └── test_complete_system.py
+├── fixtures/               # Test fixtures and data
+├── run_comprehensive_aigie_tests.py         # Comprehensive test runner
+├── AIGIE_TEST_RESULTS_DOCUMENTATION.md     # Test results documentation
+└── README.md               # Test documentation
+
+examples/                   # Example applications
+├── ai_research_assistant.py
+├── advanced_langgraph_features.py
+└── README.md
 ```
 
 ## ⚙️ Configuration
@@ -283,7 +307,16 @@ pytest tests/ -v
 # Run specific test categories
 pytest tests/unit/ -v
 pytest tests/integration/ -v
+pytest tests/functional/ -v
 pytest tests/e2e/ -v
+
+# Run comprehensive error remediation tests
+python tests/run_comprehensive_aigie_tests.py
+
+# Run specific functional tests
+python tests/functional/test_aigie_error_remediation.py
+python tests/functional/test_advanced_langgraph_scenarios.py
+python tests/functional/test_runtime_quality_assurance.py
 ```
 
 ### Running Examples

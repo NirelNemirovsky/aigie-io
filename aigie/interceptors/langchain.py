@@ -4,6 +4,7 @@ LangChain interceptor for real-time error detection and monitoring.
 
 import functools
 import inspect
+import logging
 from typing import Any, Callable, Dict, Optional, Union
 from datetime import datetime
 
@@ -265,26 +266,58 @@ class LangChainInterceptor:
                     input_data=self._extract_input_data(args, kwargs, method_name)
                 )
                 
-                # Store operation for potential retry
-                operation_id = f"{context.framework}_{context.component}_{context.method}"
-                self.error_detector.store_operation_for_retry(
-                    operation_id, original_method, (self_instance,) + args, kwargs, context
+                # Apply intelligent prompt injection based on operation type
+                enhanced_args, enhanced_kwargs = self._apply_smart_prompt_injection(
+                    args, kwargs, class_name, method_name, self_instance
                 )
                 
-                # Monitor execution
-                with self.error_detector.monitor_execution(
-                    framework="langchain",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data
-                ):
-                    try:
-                        # Call original method
-                        result = original_method(self_instance, *args, **kwargs)
+                # Store operation for potential retry (with enhanced args/kwargs)
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                self.error_detector.store_operation_for_retry(
+                    operation_id, original_method, (self_instance,) + enhanced_args, enhanced_kwargs, context
+                )
+                
+                # Monitor execution with retry capability
+                try:
+                    with self.error_detector.monitor_execution(
+                        framework="langchain",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data
+                    ):
+                        # Call original method with potentially enhanced arguments
+                        result = original_method(self_instance, *enhanced_args, **enhanced_kwargs)
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langchain",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGCHAIN RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangChain retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         else:
             def patched_method(self_instance, *args, **kwargs):
                 # Create error context
@@ -296,26 +329,58 @@ class LangChainInterceptor:
                     input_data=self._extract_input_data(args, kwargs, method_name)
                 )
                 
-                # Store operation for potential retry
-                operation_id = f"{context.framework}_{context.component}_{context.method}"
-                self.error_detector.store_operation_for_retry(
-                    operation_id, original_method, (self_instance,) + args, kwargs, context
+                # Apply intelligent prompt injection based on operation type
+                enhanced_args, enhanced_kwargs = self._apply_smart_prompt_injection(
+                    args, kwargs, class_name, method_name, self_instance
                 )
                 
-                # Monitor execution
-                with self.error_detector.monitor_execution(
-                    framework="langchain",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data
-                ):
-                    try:
-                        # Call original method
-                        result = original_method(self_instance, *args, **kwargs)
+                # Store operation for potential retry (with enhanced args/kwargs)
+                operation_id = f"{context.framework}_{context.component}_{context.method}"
+                self.error_detector.store_operation_for_retry(
+                    operation_id, original_method, (self_instance,) + enhanced_args, enhanced_kwargs, context
+                )
+                
+                # Monitor execution with retry capability
+                try:
+                    with self.error_detector.monitor_execution(
+                        framework="langchain",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data
+                    ):
+                        # Call original method with potentially enhanced arguments
+                        result = original_method(self_instance, *enhanced_args, **enhanced_kwargs)
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langchain",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGCHAIN RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangChain retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         
         return patched_method
     
@@ -340,20 +405,47 @@ class LangChainInterceptor:
                     operation_id, original_method, (self_instance,) + args, kwargs, context
                 )
                 
-                # Monitor execution
-                async with self.error_detector.monitor_execution_async(
-                    framework="langchain",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data
-                ):
-                    try:
+                # Monitor execution with retry capability
+                try:
+                    async with self.error_detector.monitor_execution_async(
+                        framework="langchain",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data
+                    ):
                         # Call original method
                         result = await original_method(self_instance, *args, **kwargs)
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langchain",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGCHAIN ASYNC RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangChain async retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         else:
             async def patched_method(self_instance, *args, **kwargs):
                 # Create error context
@@ -371,20 +463,47 @@ class LangChainInterceptor:
                     operation_id, original_method, (self_instance,) + args, kwargs, context
                 )
                 
-                # Monitor execution
-                async with self.error_detector.monitor_execution_async(
-                    framework="langchain",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data
-                ):
-                    try:
+                # Monitor execution with retry capability
+                try:
+                    async with self.error_detector.monitor_execution_async(
+                        framework="langchain",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data
+                    ):
                         # Call original method
                         result = await original_method(self_instance, *args, **kwargs)
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langchain",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGCHAIN ASYNC RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangChain async retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         
         return patched_method
     
@@ -479,20 +598,47 @@ class LangChainInterceptor:
                 operation_id, tool_func, args, kwargs, context
             )
             
-            # Monitor execution
-            with self.error_detector.monitor_execution(
-                framework="langchain",
-                component="Tool",
-                method="__call__",
-                input_data=context.input_data
-            ):
-                try:
+            # Monitor execution with retry capability
+            try:
+                with self.error_detector.monitor_execution(
+                    framework="langchain",
+                    component="Tool",
+                    method="__call__",
+                    input_data=context.input_data
+                ):
                     result = tool_func(*args, **kwargs)
                     self.logger.log_system_event(f"Tool '{tool_name}' executed successfully")
                     return result
-                except Exception as e:
-                    self.logger.log_system_event(f"Tool '{tool_name}' execution failed: {e}")
-                    raise
+            except Exception as e:
+                self.logger.log_system_event(f"Tool '{tool_name}' execution failed: {e}")
+                
+                # Try automatic retry if enabled
+                if (self.error_detector.enable_automatic_retry and 
+                    self.error_detector.intelligent_retry):
+                    try:
+                        # Create error context for retry
+                        error_context = ErrorContext(
+                            timestamp=datetime.now(),
+                            framework="langchain",
+                            component="Tool",
+                            method="__call__",
+                            input_data=context.input_data
+                        )
+                        
+                        # Attempt retry with enhanced context
+                        retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                            tool_func, *args, 
+                            error_context=error_context, **kwargs
+                        )
+                        
+                        if retry_result is not None:
+                            logging.info(f"✅ TOOL RETRY SUCCESS: {tool_name} recovered")
+                            return retry_result
+                    except Exception as retry_error:
+                        logging.warning(f"Tool retry failed: {retry_error}")
+                
+                # If retry failed or not enabled, raise original exception
+                raise
         
         return intercepted_tool
     
@@ -521,6 +667,260 @@ class LangChainInterceptor:
             "patched_methods": list(self.original_methods.keys()),
             "target_classes": list(self.target_classes.keys())
         }
+    
+    def _is_llm_call(self, class_name: str, method_name: str) -> bool:
+        """Check if this is an LLM call that should receive prompt injection."""
+        # Only target actual LLM classes, not agents or chains
+        llm_classes = {
+            'ChatOpenAI', 'ChatAnthropic', 'ChatGoogleGenerativeAI', 'ChatOllama',
+            'OpenAI', 'LLM', 'ChatModel', 'BaseLanguageModel'
+        }
+        
+        # Exclude agent and chain classes
+        excluded_classes = {
+            'Agent', 'AgentExecutor', 'LLMChain', 'ConversationChain',
+            'RetrievalQA', 'VectorStoreRetriever', 'BaseRetriever'
+        }
+        
+        # Methods that represent direct LLM calls
+        llm_methods = {'invoke', 'ainvoke', '__call__', 'acall', 'generate', 'agenerate'}
+        
+        # Check if it's an LLM class and not an excluded class
+        is_llm_class = class_name in llm_classes
+        is_excluded = any(excluded in class_name for excluded in excluded_classes)
+        is_llm_method = method_name in llm_methods
+        
+        return is_llm_class and not is_excluded and is_llm_method
+    
+    def _apply_smart_prompt_injection(self, args: tuple, kwargs: dict, class_name: str, 
+                                    method_name: str, instance: Any) -> tuple:
+        """Apply intelligent prompt injection based on operation type and context."""
+        enhanced_args = list(args)
+        enhanced_kwargs = kwargs.copy()
+        
+        # Check if we have pending remediation prompts
+        if (hasattr(self.error_detector, 'pending_remediation_prompts') and 
+            self.error_detector.pending_remediation_prompts):
+            
+            remediation_prompt = self.error_detector.pending_remediation_prompts[0]
+            logging.info(f"💉 SMART INJECTION: Applying remediation prompt for {class_name}.{method_name}")
+            
+            # Determine the best injection strategy based on operation type
+            if self._is_agent_operation(class_name, method_name):
+                # For agent operations, inject via input parameter
+                enhanced_kwargs = self._inject_agent_prompt(enhanced_kwargs, remediation_prompt)
+            elif self._is_llm_operation(class_name, method_name):
+                # For LLM operations, inject via prompt parameter
+                enhanced_kwargs = self._inject_llm_prompt(enhanced_kwargs, remediation_prompt)
+            elif self._is_chain_operation(class_name, method_name):
+                # For chain operations, inject via input parameter
+                enhanced_kwargs = self._inject_chain_prompt(enhanced_kwargs, remediation_prompt)
+            else:
+                # Generic injection
+                enhanced_kwargs = self._inject_generic_prompt(enhanced_kwargs, remediation_prompt)
+            
+            # Clear the used remediation prompt
+            self.error_detector.pending_remediation_prompts.clear()
+        
+        return tuple(enhanced_args), enhanced_kwargs
+    
+    def _is_agent_operation(self, class_name: str, method_name: str) -> bool:
+        """Check if this is an agent operation."""
+        agent_classes = ['AgentExecutor', 'Agent', 'ConversationalAgent', 'ReActAgent']
+        return any(agent_class in class_name for agent_class in agent_classes)
+    
+    def _is_llm_operation(self, class_name: str, method_name: str) -> bool:
+        """Check if this is an LLM operation."""
+        llm_classes = ['OpenAI', 'ChatOpenAI', 'Anthropic', 'ChatAnthropic', 'LLM', 'ChatModel']
+        return any(llm_class in class_name for llm_class in llm_classes)
+    
+    def _is_chain_operation(self, class_name: str, method_name: str) -> bool:
+        """Check if this is a chain operation."""
+        chain_classes = ['Chain', 'LLMChain', 'ConversationChain', 'RetrievalQA']
+        return any(chain_class in class_name for chain_class in chain_classes)
+    
+    def _inject_agent_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
+        """Inject prompt for agent operations."""
+        enhanced_kwargs = kwargs.copy()
+        
+        # For agents, inject via input parameter
+        if 'input' in enhanced_kwargs:
+            original_input = enhanced_kwargs['input']
+            enhanced_kwargs['input'] = f"{remediation_prompt}\n\n{original_input}"
+            logging.info("💉 AGENT INJECTION: Enhanced input parameter")
+        elif 'inputs' in enhanced_kwargs:
+            original_inputs = enhanced_kwargs['inputs']
+            if isinstance(original_inputs, dict) and 'input' in original_inputs:
+                original_inputs['input'] = f"{remediation_prompt}\n\n{original_inputs['input']}"
+                logging.info("💉 AGENT INJECTION: Enhanced inputs['input'] parameter")
+        
+        return enhanced_kwargs
+    
+    def _inject_llm_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
+        """Inject prompt for LLM operations."""
+        enhanced_kwargs = kwargs.copy()
+        
+        # For LLMs, inject via messages or prompt parameter
+        if 'messages' in enhanced_kwargs and isinstance(enhanced_kwargs['messages'], list):
+            messages = enhanced_kwargs['messages'].copy()
+            system_message = {
+                "role": "system",
+                "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
+            }
+            messages.insert(0, system_message)
+            enhanced_kwargs['messages'] = messages
+            logging.info("💉 LLM INJECTION: Enhanced messages with system prompt")
+        elif 'prompt' in enhanced_kwargs:
+            original_prompt = enhanced_kwargs['prompt']
+            enhanced_kwargs['prompt'] = f"{remediation_prompt}\n\n{original_prompt}"
+            logging.info("💉 LLM INJECTION: Enhanced prompt parameter")
+        
+        return enhanced_kwargs
+    
+    def _inject_chain_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
+        """Inject prompt for chain operations."""
+        enhanced_kwargs = kwargs.copy()
+        
+        # For chains, inject via input parameter
+        if 'input' in enhanced_kwargs:
+            original_input = enhanced_kwargs['input']
+            enhanced_kwargs['input'] = f"{remediation_prompt}\n\n{original_input}"
+            logging.info("💉 CHAIN INJECTION: Enhanced input parameter")
+        elif 'inputs' in enhanced_kwargs:
+            original_inputs = enhanced_kwargs['inputs']
+            if isinstance(original_inputs, dict) and 'input' in original_inputs:
+                original_inputs['input'] = f"{remediation_prompt}\n\n{original_inputs['input']}"
+                logging.info("💉 CHAIN INJECTION: Enhanced inputs['input'] parameter")
+        
+        return enhanced_kwargs
+    
+    def _inject_generic_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
+        """Inject prompt for generic operations."""
+        enhanced_kwargs = kwargs.copy()
+        
+        # Try common parameter names
+        prompt_params = ['input', 'prompt', 'text', 'query', 'message']
+        for param in prompt_params:
+            if param in enhanced_kwargs and isinstance(enhanced_kwargs[param], str):
+                original_value = enhanced_kwargs[param]
+                enhanced_kwargs[param] = f"{remediation_prompt}\n\n{original_value}"
+                logging.info(f"💉 GENERIC INJECTION: Enhanced {param} parameter")
+                break
+        
+        return enhanced_kwargs
+
+    def _apply_llm_prompt_injection(self, args: tuple, kwargs: dict, class_name: str, 
+                                  method_name: str, instance: Any) -> tuple:
+        """Apply prompt injection to LLM calls by modifying the messages/prompt."""
+        enhanced_args = list(args)
+        enhanced_kwargs = kwargs.copy()
+        
+        # Check if we have any pending remediation prompts to inject
+        if not hasattr(self.error_detector, 'pending_remediation_prompts'):
+            return tuple(enhanced_args), enhanced_kwargs
+        
+        pending_prompts = getattr(self.error_detector, 'pending_remediation_prompts', [])
+        if not pending_prompts:
+            return tuple(enhanced_args), enhanced_kwargs
+        
+        # Get the most recent remediation prompt
+        remediation_prompt = pending_prompts[-1]
+        
+        logging.info(f"💉 LLM PROMPT INJECTION: Applying remediation prompt to {class_name}.{method_name}")
+        logging.info(f"💉 REMEDIATION PROMPT: {remediation_prompt[:200]}...")
+        
+        # CRITICAL: Never modify LangChain-specific parameters that could break the agent
+        langchain_protected_params = {
+            'agent_scratchpad', 'intermediate_steps', 'messages', 'input_variables',
+            'stop', 'stop_sequences', 'callbacks', 'tags', 'metadata', 'config',
+            'run_name', 'run_id', 'parent_run_id', 'run_type'
+        }
+        
+        # Only apply prompt injection to direct LLM calls, not agent calls
+        if 'Agent' in class_name or 'Chain' in class_name:
+            logging.info(f"🚫 SKIPPING PROMPT INJECTION: {class_name} is an agent/chain, not a direct LLM call")
+            return tuple(enhanced_args), enhanced_kwargs
+        
+        # Handle different LLM input formats - be very careful about what we modify
+        if args and len(args) > 0:
+            # First argument is typically the input
+            input_arg = args[0]
+            
+            if isinstance(input_arg, str):
+                # Simple string input - prepend remediation context
+                enhanced_args[0] = f"{remediation_prompt}\n\n{input_arg}"
+                logging.info(f"💉 INJECTED: Enhanced string input with remediation context")
+                
+            elif isinstance(input_arg, list) and input_arg and isinstance(input_arg[0], dict):
+                # List of message dictionaries (ChatOpenAI format)
+                messages = input_arg.copy()
+                
+                # Add system message with remediation context
+                system_message = {
+                    "role": "system",
+                    "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
+                }
+                
+                # Insert system message at the beginning
+                messages.insert(0, system_message)
+                enhanced_args[0] = messages
+                logging.info(f"💉 INJECTED: Added system message with remediation context to {len(messages)} messages")
+                
+            elif isinstance(input_arg, dict):
+                # Dictionary input - be very careful about what we modify
+                if 'messages' in input_arg and 'agent_scratchpad' not in input_arg:
+                    # Only modify if it's not an agent call
+                    messages = input_arg['messages'].copy() if isinstance(input_arg['messages'], list) else [input_arg['messages']]
+                    
+                    system_message = {
+                        "role": "system", 
+                        "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
+                    }
+                    messages.insert(0, system_message)
+                    
+                    enhanced_args[0] = {**input_arg, 'messages': messages}
+                    logging.info(f"💉 INJECTED: Enhanced dict input with system message")
+                elif 'input' in input_arg and 'agent_scratchpad' not in input_arg:
+                    # Only modify if it's not an agent call
+                    enhanced_args[0] = {
+                        **input_arg,
+                        'input': f"{remediation_prompt}\n\n{input_arg['input']}"
+                    }
+                    logging.info(f"💉 INJECTED: Enhanced dict input field")
+                else:
+                    logging.info(f"🚫 SKIPPING: Dict input contains protected agent parameters")
+        
+        # Also check kwargs for input parameters - but be very selective
+        safe_prompt_keys = ['input', 'prompt', 'text', 'query']
+        for key in safe_prompt_keys:
+            if (key in enhanced_kwargs and 
+                key not in langchain_protected_params and
+                'agent_scratchpad' not in enhanced_kwargs):  # Extra safety check
+                
+                value = enhanced_kwargs[key]
+                
+                if isinstance(value, str):
+                    enhanced_kwargs[key] = f"{remediation_prompt}\n\n{value}"
+                    logging.info(f"💉 INJECTED: Enhanced kwargs['{key}'] with remediation context")
+                elif isinstance(value, list) and value and isinstance(value[0], dict):
+                    # Handle message list in kwargs
+                    messages = value.copy()
+                    system_message = {
+                        "role": "system",
+                        "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
+                    }
+                    messages.insert(0, system_message)
+                    enhanced_kwargs[key] = messages
+                    logging.info(f"💉 INJECTED: Enhanced kwargs['{key}'] with system message")
+            else:
+                if key in enhanced_kwargs:
+                    logging.info(f"🚫 SKIPPING: {key} is protected or agent context detected")
+        
+        # Clear the used remediation prompt
+        if hasattr(self.error_detector, 'pending_remediation_prompts'):
+            self.error_detector.pending_remediation_prompts.clear()
+        
+        return tuple(enhanced_args), enhanced_kwargs
 
 
 class LangChainCallbackHandler:

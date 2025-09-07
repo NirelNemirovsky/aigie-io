@@ -4,6 +4,7 @@ LangGraph interceptor for real-time error detection and monitoring.
 
 import functools
 import inspect
+import logging
 from typing import Any, Callable, Dict, Optional, Union, List
 from datetime import datetime
 
@@ -204,15 +205,15 @@ class LangGraphInterceptor:
                     operation_id, original_method, (self_instance,) + args, kwargs, context
                 )
                 
-                # Monitor execution
-                with self.error_detector.monitor_execution(
-                    framework="langgraph",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data,
-                    state=context.state
-                ):
-                    try:
+                # Monitor execution with retry capability
+                try:
+                    with self.error_detector.monitor_execution(
+                        framework="langgraph",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data,
+                        state=context.state
+                    ):
                         # Call original method
                         result = original_method(self_instance, *args, **kwargs)
                         
@@ -221,9 +222,38 @@ class LangGraphInterceptor:
                             self._track_graph_changes(self_instance, method_name, args, kwargs, result)
                         
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langgraph",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data,
+                                state=context.state
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGGRAPH RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                # Track state changes for successful retry
+                                if class_name == 'StateGraph' and method_name in ['add_node', 'add_edge', 'compile']:
+                                    self._track_graph_changes(self_instance, method_name, args, kwargs, retry_result)
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangGraph retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         else:
             def patched_method(self_instance, *args, **kwargs):
                 # Create error context
@@ -242,15 +272,15 @@ class LangGraphInterceptor:
                     operation_id, original_method, (self_instance,) + args, kwargs, context
                 )
                 
-                # Monitor execution
-                with self.error_detector.monitor_execution(
-                    framework="langgraph",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data,
-                    state=context.state
-                ):
-                    try:
+                # Monitor execution with retry capability
+                try:
+                    with self.error_detector.monitor_execution(
+                        framework="langgraph",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data,
+                        state=context.state
+                    ):
                         # Call original method
                         result = original_method(self_instance, *args, **kwargs)
                         
@@ -259,9 +289,38 @@ class LangGraphInterceptor:
                             self._track_graph_changes(self_instance, method_name, args, kwargs, result)
                         
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langgraph",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data,
+                                state=context.state
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGGRAPH RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                # Track state changes for successful retry
+                                if class_name == 'StateGraph' and method_name in ['add_node', 'add_edge', 'compile']:
+                                    self._track_graph_changes(self_instance, method_name, args, kwargs, retry_result)
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangGraph retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         
         return patched_method
     
@@ -287,15 +346,15 @@ class LangGraphInterceptor:
                     operation_id, original_method, (self_instance,) + args, kwargs, context
                 )
                 
-                # Monitor execution
-                async with self.error_detector.monitor_execution_async(
-                    framework="langgraph",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data,
-                    state=context.state
-                ):
-                    try:
+                # Monitor execution with retry capability
+                try:
+                    async with self.error_detector.monitor_execution_async(
+                        framework="langgraph",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data,
+                        state=context.state
+                    ):
                         # Call original method
                         result = await original_method(self_instance, *args, **kwargs)
                         
@@ -304,9 +363,38 @@ class LangGraphInterceptor:
                             self._track_graph_changes(self_instance, method_name, args, kwargs, result)
                         
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langgraph",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data,
+                                state=context.state
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGGRAPH ASYNC RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                # Track state changes for successful retry
+                                if class_name == 'StateGraph' and method_name in ['add_node', 'add_edge', 'compile']:
+                                    self._track_graph_changes(self_instance, method_name, args, kwargs, retry_result)
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangGraph async retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         else:
             async def patched_method(self_instance, *args, **kwargs):
                 # Create error context
@@ -325,15 +413,15 @@ class LangGraphInterceptor:
                     operation_id, original_method, (self_instance,) + args, kwargs, context
                 )
                 
-                # Monitor execution
-                async with self.error_detector.monitor_execution_async(
-                    framework="langgraph",
-                    component=class_name,
-                    method=method_name,
-                    input_data=context.input_data,
-                    state=context.state
-                ):
-                    try:
+                # Monitor execution with retry capability
+                try:
+                    async with self.error_detector.monitor_execution_async(
+                        framework="langgraph",
+                        component=class_name,
+                        method=method_name,
+                        input_data=context.input_data,
+                        state=context.state
+                    ):
                         # Call original method
                         result = await original_method(self_instance, *args, **kwargs)
                         
@@ -342,9 +430,38 @@ class LangGraphInterceptor:
                             self._track_graph_changes(self_instance, method_name, args, kwargs, result)
                         
                         return result
-                    except Exception as e:
-                        # Error will be detected by the context manager
-                        raise
+                except Exception as e:
+                    # Try automatic retry if enabled
+                    if (self.error_detector.enable_automatic_retry and 
+                        self.error_detector.intelligent_retry):
+                        try:
+                            # Create error context for retry
+                            error_context = ErrorContext(
+                                timestamp=datetime.now(),
+                                framework="langgraph",
+                                component=class_name,
+                                method=method_name,
+                                input_data=context.input_data,
+                                state=context.state
+                            )
+                            
+                            # Attempt retry with enhanced context
+                            retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
+                                original_method, self_instance, *args, 
+                                error_context=error_context, **kwargs
+                            )
+                            
+                            if retry_result is not None:
+                                logging.info(f"✅ LANGGRAPH ASYNC RETRY SUCCESS: {class_name}.{method_name} recovered")
+                                # Track state changes for successful retry
+                                if class_name == 'StateGraph' and method_name in ['add_node', 'add_edge', 'compile']:
+                                    self._track_graph_changes(self_instance, method_name, args, kwargs, retry_result)
+                                return retry_result
+                        except Exception as retry_error:
+                            logging.warning(f"LangGraph async retry failed: {retry_error}")
+                    
+                    # If retry failed or not enabled, raise original exception
+                    raise
         
         return patched_method
     
