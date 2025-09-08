@@ -5,12 +5,31 @@ LangChain interceptor for real-time error detection and monitoring.
 import functools
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union, List
 from datetime import datetime
 
 from ..core.error_handling.error_detector import ErrorDetector
 from ..core.types.error_types import ErrorContext
 from ..reporting.logger import AigieLogger
+
+# LangChain imports
+try:
+    from langchain_core.callbacks import BaseCallbackHandler
+    from langchain_core.callbacks.manager import CallbackManagerForChainRun, CallbackManagerForToolRun
+    from langchain_core.tracers.context import tracing_v2_enabled
+    from langchain_core.outputs import LLMResult, ChatResult
+    from langchain_core.messages import BaseMessage
+    LANGCHAIN_AVAILABLE = True
+except ImportError:
+    # Fallback for when LangChain is not available
+    BaseCallbackHandler = object
+    CallbackManagerForChainRun = None
+    CallbackManagerForToolRun = None
+    tracing_v2_enabled = lambda: False
+    LLMResult = None
+    ChatResult = None
+    BaseMessage = None
+    LANGCHAIN_AVAILABLE = False
 
 
 class LangChainInterceptor:
@@ -21,6 +40,9 @@ class LangChainInterceptor:
         self.logger = logger
         self.intercepted_classes = set()
         self.original_methods = {}
+        
+        # Initialize the callback handler
+        self.callback_handler = LangChainCallbackHandler(error_detector, logger)
         
         # LangChain components to intercept (updated for modern LangChain)
         self.target_classes = {
@@ -72,6 +94,9 @@ class LangChainInterceptor:
         
         # Patch class methods for future instances
         self._patch_classes()
+        
+        # Register callback handler with LangChain components
+        self._register_callback_handler()
     
     def stop_intercepting(self):
         """Stop intercepting LangChain operations."""
@@ -86,6 +111,63 @@ class LangChainInterceptor:
         # This would require access to a registry of instances
         # For now, we'll focus on patching classes for future instances
         pass
+    
+    def _register_callback_handler(self):
+        """Register the callback handler with LangChain components."""
+        if not LANGCHAIN_AVAILABLE:
+            self.logger.log_system_event("LangChain not available - skipping callback registration")
+            return
+        
+        try:
+            # Register with global callback manager if available
+            from langchain_core.callbacks import get_callback_manager
+            callback_manager = get_callback_manager()
+            if callback_manager:
+                callback_manager.add_handler(self.callback_handler)
+                self.logger.log_system_event("Callback handler registered with global callback manager")
+            
+            # Also register with tracing if available
+            if tracing_v2_enabled():
+                from langchain_core.tracers import LangChainTracer
+                tracer = LangChainTracer()
+                tracer.add_handler(self.callback_handler)
+                self.logger.log_system_event("Callback handler registered with LangChain tracer")
+                
+        except Exception as e:
+            self.logger.log_system_event(f"Could not register callback handler: {e}")
+    
+    def get_callback_handler(self):
+        """Get the callback handler for manual registration."""
+        return self.callback_handler
+    
+    def register_with_langchain_component(self, component):
+        """Register the callback handler with a specific LangChain component."""
+        if not LANGCHAIN_AVAILABLE:
+            self.logger.log_system_event("LangChain not available - cannot register callback handler")
+            return False
+        
+        try:
+            # Try to add the callback handler to the component
+            if hasattr(component, 'callbacks'):
+                if component.callbacks is None:
+                    component.callbacks = [self.callback_handler]
+                else:
+                    if isinstance(component.callbacks, list):
+                        component.callbacks.append(self.callback_handler)
+                    else:
+                        component.callbacks = [component.callbacks, self.callback_handler]
+                self.logger.log_system_event(f"Callback handler registered with {type(component).__name__}")
+                return True
+            elif hasattr(component, 'callback_manager'):
+                component.callback_manager.add_handler(self.callback_handler)
+                self.logger.log_system_event(f"Callback handler registered with {type(component).__name__} callback manager")
+                return True
+            else:
+                self.logger.log_system_event(f"Component {type(component).__name__} does not support callbacks")
+                return False
+        except Exception as e:
+            self.logger.log_system_event(f"Failed to register callback handler with {type(component).__name__}: {e}")
+            return False
     
     def _patch_classes(self):
         """Patch LangChain classes to intercept method calls."""
@@ -267,7 +349,7 @@ class LangChainInterceptor:
                 )
                 
                 # Apply intelligent prompt injection based on operation type
-                enhanced_args, enhanced_kwargs = self._apply_smart_prompt_injection(
+                enhanced_args, enhanced_kwargs = self._apply_unified_prompt_injection(
                     args, kwargs, class_name, method_name, self_instance
                 )
                 
@@ -330,7 +412,7 @@ class LangChainInterceptor:
                 )
                 
                 # Apply intelligent prompt injection based on operation type
-                enhanced_args, enhanced_kwargs = self._apply_smart_prompt_injection(
+                enhanced_args, enhanced_kwargs = self._apply_unified_prompt_injection(
                     args, kwargs, class_name, method_name, self_instance
                 )
                 
@@ -577,87 +659,6 @@ class LangChainInterceptor:
             
             self.logger.log_system_event(f"Intercepted chain instance: {class_name}")
     
-    def intercept_tool_function(self, tool_func: Callable, tool_name: str = None) -> Callable:
-        """Intercept a tool function decorated with @tool."""
-        tool_name = tool_name or getattr(tool_func, '__name__', 'unknown_tool')
-        
-        @functools.wraps(tool_func)
-        def intercepted_tool(*args, **kwargs):
-            # Create error context
-            context = ErrorContext(
-                timestamp=datetime.now(),
-                framework="langchain",
-                component="Tool",
-                method="__call__",
-                input_data=self._extract_tool_input_data(args, kwargs, tool_name)
-            )
-            
-            # Store operation for potential retry
-            operation_id = f"langchain_Tool_{tool_name}"
-            self.error_detector.store_operation_for_retry(
-                operation_id, tool_func, args, kwargs, context
-            )
-            
-            # Monitor execution with retry capability
-            try:
-                with self.error_detector.monitor_execution(
-                    framework="langchain",
-                    component="Tool",
-                    method="__call__",
-                    input_data=context.input_data
-                ):
-                    result = tool_func(*args, **kwargs)
-                    self.logger.log_system_event(f"Tool '{tool_name}' executed successfully")
-                    return result
-            except Exception as e:
-                self.logger.log_system_event(f"Tool '{tool_name}' execution failed: {e}")
-                
-                # Try automatic retry if enabled
-                if (self.error_detector.enable_automatic_retry and 
-                    self.error_detector.intelligent_retry):
-                    try:
-                        # Create error context for retry
-                        error_context = ErrorContext(
-                            timestamp=datetime.now(),
-                            framework="langchain",
-                            component="Tool",
-                            method="__call__",
-                            input_data=context.input_data
-                        )
-                        
-                        # Attempt retry with enhanced context
-                        retry_result = self.error_detector.intelligent_retry.retry_with_gemini_context(
-                            tool_func, *args, 
-                            error_context=error_context, **kwargs
-                        )
-                        
-                        if retry_result is not None:
-                            logging.info(f"✅ TOOL RETRY SUCCESS: {tool_name} recovered")
-                            return retry_result
-                    except Exception as retry_error:
-                        logging.warning(f"Tool retry failed: {retry_error}")
-                
-                # If retry failed or not enabled, raise original exception
-                raise
-        
-        return intercepted_tool
-    
-    def _extract_tool_input_data(self, args: tuple, kwargs: dict, tool_name: str) -> Optional[Dict[str, Any]]:
-        """Extract input data from tool function call."""
-        input_data = {"tool_name": tool_name}
-        
-        # Add positional args (usually tool inputs)
-        if args:
-            input_data["args"] = [str(arg)[:100] for arg in args[:3]]  # First 3 args, truncated
-        
-        # Add keyword arguments
-        for key, value in kwargs.items():
-            if key in ['input', 'query', 'text', 'prompt']:
-                input_data[key] = str(value)[:200]  # Truncate long inputs
-            else:
-                input_data[key] = type(value).__name__
-        
-        return input_data
     
     def get_interception_status(self) -> Dict[str, Any]:
         """Get current interception status."""
@@ -692,8 +693,8 @@ class LangChainInterceptor:
         
         return is_llm_class and not is_excluded and is_llm_method
     
-    def _apply_smart_prompt_injection(self, args: tuple, kwargs: dict, class_name: str, 
-                                    method_name: str, instance: Any) -> tuple:
+    def _apply_unified_prompt_injection(self, args: tuple, kwargs: dict, class_name: str, 
+                                      method_name: str, instance: Any) -> tuple:
         """Apply intelligent prompt injection based on operation type and context."""
         enhanced_args = list(args)
         enhanced_kwargs = kwargs.copy()
@@ -705,295 +706,349 @@ class LangChainInterceptor:
             remediation_prompt = self.error_detector.pending_remediation_prompts[0]
             logging.info(f"💉 SMART INJECTION: Applying remediation prompt for {class_name}.{method_name}")
             
-            # Determine the best injection strategy based on operation type
-            if self._is_agent_operation(class_name, method_name):
-                # For agent operations, inject via input parameter
-                enhanced_kwargs = self._inject_agent_prompt(enhanced_kwargs, remediation_prompt)
-            elif self._is_llm_operation(class_name, method_name):
-                # For LLM operations, inject via prompt parameter
-                enhanced_kwargs = self._inject_llm_prompt(enhanced_kwargs, remediation_prompt)
-            elif self._is_chain_operation(class_name, method_name):
-                # For chain operations, inject via input parameter
-                enhanced_kwargs = self._inject_chain_prompt(enhanced_kwargs, remediation_prompt)
-            else:
-                # Generic injection
-                enhanced_kwargs = self._inject_generic_prompt(enhanced_kwargs, remediation_prompt)
+            # Determine operation type and apply appropriate injection strategy
+            operation_type = self._determine_operation_type(class_name, method_name)
+            enhanced_kwargs = self._inject_prompt_by_type(enhanced_kwargs, remediation_prompt, operation_type)
             
             # Clear the used remediation prompt
             self.error_detector.pending_remediation_prompts.clear()
         
         return tuple(enhanced_args), enhanced_kwargs
     
-    def _is_agent_operation(self, class_name: str, method_name: str) -> bool:
-        """Check if this is an agent operation."""
+    def _determine_operation_type(self, class_name: str, method_name: str) -> str:
+        """Determine the operation type for prompt injection strategy."""
+        # Agent operations
         agent_classes = ['AgentExecutor', 'Agent', 'ConversationalAgent', 'ReActAgent']
-        return any(agent_class in class_name for agent_class in agent_classes)
-    
-    def _is_llm_operation(self, class_name: str, method_name: str) -> bool:
-        """Check if this is an LLM operation."""
+        if any(agent_class in class_name for agent_class in agent_classes):
+            return 'agent'
+        
+        # LLM operations
         llm_classes = ['OpenAI', 'ChatOpenAI', 'Anthropic', 'ChatAnthropic', 'LLM', 'ChatModel']
-        return any(llm_class in class_name for llm_class in llm_classes)
-    
-    def _is_chain_operation(self, class_name: str, method_name: str) -> bool:
-        """Check if this is a chain operation."""
+        if any(llm_class in class_name for llm_class in llm_classes):
+            return 'llm'
+        
+        # Chain operations
         chain_classes = ['Chain', 'LLMChain', 'ConversationChain', 'RetrievalQA']
-        return any(chain_class in class_name for chain_class in chain_classes)
+        if any(chain_class in class_name for chain_class in chain_classes):
+            return 'chain'
+        
+        # Tool operations
+        tool_classes = ['BaseTool', 'StructuredTool', 'Tool']
+        if any(tool_class in class_name for tool_class in tool_classes):
+            return 'tool'
+        
+        # Default to generic
+        return 'generic'
     
-    def _inject_agent_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
-        """Inject prompt for agent operations."""
+    def _inject_prompt_by_type(self, kwargs: dict, remediation_prompt: str, operation_type: str) -> dict:
+        """Inject prompt based on operation type with appropriate strategy."""
         enhanced_kwargs = kwargs.copy()
         
-        # For agents, inject via input parameter
-        if 'input' in enhanced_kwargs:
-            original_input = enhanced_kwargs['input']
-            enhanced_kwargs['input'] = f"{remediation_prompt}\n\n{original_input}"
-            logging.info("💉 AGENT INJECTION: Enhanced input parameter")
-        elif 'inputs' in enhanced_kwargs:
-            original_inputs = enhanced_kwargs['inputs']
-            if isinstance(original_inputs, dict) and 'input' in original_inputs:
-                original_inputs['input'] = f"{remediation_prompt}\n\n{original_inputs['input']}"
-                logging.info("💉 AGENT INJECTION: Enhanced inputs['input'] parameter")
+        if operation_type == 'agent':
+            # For agent operations, inject via input parameter
+            if 'input' in enhanced_kwargs:
+                original_input = enhanced_kwargs['input']
+                enhanced_kwargs['input'] = f"{remediation_prompt}\n\n{original_input}"
+                logging.info("💉 AGENT INJECTION: Enhanced input parameter")
+            elif 'inputs' in enhanced_kwargs and isinstance(enhanced_kwargs['inputs'], dict):
+                if 'input' in enhanced_kwargs['inputs']:
+                    original_input = enhanced_kwargs['inputs']['input']
+                    enhanced_kwargs['inputs']['input'] = f"{remediation_prompt}\n\n{original_input}"
+                    logging.info("💉 AGENT INJECTION: Enhanced inputs['input'] parameter")
         
-        return enhanced_kwargs
-    
-    def _inject_llm_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
-        """Inject prompt for LLM operations."""
-        enhanced_kwargs = kwargs.copy()
-        
-        # For LLMs, inject via messages or prompt parameter
-        if 'messages' in enhanced_kwargs and isinstance(enhanced_kwargs['messages'], list):
-            messages = enhanced_kwargs['messages'].copy()
-            system_message = {
-                "role": "system",
-                "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
-            }
-            messages.insert(0, system_message)
-            enhanced_kwargs['messages'] = messages
-            logging.info("💉 LLM INJECTION: Enhanced messages with system prompt")
-        elif 'prompt' in enhanced_kwargs:
-            original_prompt = enhanced_kwargs['prompt']
-            enhanced_kwargs['prompt'] = f"{remediation_prompt}\n\n{original_prompt}"
-            logging.info("💉 LLM INJECTION: Enhanced prompt parameter")
-        
-        return enhanced_kwargs
-    
-    def _inject_chain_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
-        """Inject prompt for chain operations."""
-        enhanced_kwargs = kwargs.copy()
-        
-        # For chains, inject via input parameter
-        if 'input' in enhanced_kwargs:
-            original_input = enhanced_kwargs['input']
-            enhanced_kwargs['input'] = f"{remediation_prompt}\n\n{original_input}"
-            logging.info("💉 CHAIN INJECTION: Enhanced input parameter")
-        elif 'inputs' in enhanced_kwargs:
-            original_inputs = enhanced_kwargs['inputs']
-            if isinstance(original_inputs, dict) and 'input' in original_inputs:
-                original_inputs['input'] = f"{remediation_prompt}\n\n{original_inputs['input']}"
-                logging.info("💉 CHAIN INJECTION: Enhanced inputs['input'] parameter")
-        
-        return enhanced_kwargs
-    
-    def _inject_generic_prompt(self, kwargs: dict, remediation_prompt: str) -> dict:
-        """Inject prompt for generic operations."""
-        enhanced_kwargs = kwargs.copy()
-        
-        # Try common parameter names
-        prompt_params = ['input', 'prompt', 'text', 'query', 'message']
-        for param in prompt_params:
-            if param in enhanced_kwargs and isinstance(enhanced_kwargs[param], str):
-                original_value = enhanced_kwargs[param]
-                enhanced_kwargs[param] = f"{remediation_prompt}\n\n{original_value}"
-                logging.info(f"💉 GENERIC INJECTION: Enhanced {param} parameter")
-                break
-        
-        return enhanced_kwargs
-
-    def _apply_llm_prompt_injection(self, args: tuple, kwargs: dict, class_name: str, 
-                                  method_name: str, instance: Any) -> tuple:
-        """Apply prompt injection to LLM calls by modifying the messages/prompt."""
-        enhanced_args = list(args)
-        enhanced_kwargs = kwargs.copy()
-        
-        # Check if we have any pending remediation prompts to inject
-        if not hasattr(self.error_detector, 'pending_remediation_prompts'):
-            return tuple(enhanced_args), enhanced_kwargs
-        
-        pending_prompts = getattr(self.error_detector, 'pending_remediation_prompts', [])
-        if not pending_prompts:
-            return tuple(enhanced_args), enhanced_kwargs
-        
-        # Get the most recent remediation prompt
-        remediation_prompt = pending_prompts[-1]
-        
-        logging.info(f"💉 LLM PROMPT INJECTION: Applying remediation prompt to {class_name}.{method_name}")
-        logging.info(f"💉 REMEDIATION PROMPT: {remediation_prompt[:200]}...")
-        
-        # CRITICAL: Never modify LangChain-specific parameters that could break the agent
-        langchain_protected_params = {
-            'agent_scratchpad', 'intermediate_steps', 'messages', 'input_variables',
-            'stop', 'stop_sequences', 'callbacks', 'tags', 'metadata', 'config',
-            'run_name', 'run_id', 'parent_run_id', 'run_type'
-        }
-        
-        # Only apply prompt injection to direct LLM calls, not agent calls
-        if 'Agent' in class_name or 'Chain' in class_name:
-            logging.info(f"🚫 SKIPPING PROMPT INJECTION: {class_name} is an agent/chain, not a direct LLM call")
-            return tuple(enhanced_args), enhanced_kwargs
-        
-        # Handle different LLM input formats - be very careful about what we modify
-        if args and len(args) > 0:
-            # First argument is typically the input
-            input_arg = args[0]
-            
-            if isinstance(input_arg, str):
-                # Simple string input - prepend remediation context
-                enhanced_args[0] = f"{remediation_prompt}\n\n{input_arg}"
-                logging.info(f"💉 INJECTED: Enhanced string input with remediation context")
-                
-            elif isinstance(input_arg, list) and input_arg and isinstance(input_arg[0], dict):
-                # List of message dictionaries (ChatOpenAI format)
-                messages = input_arg.copy()
-                
-                # Add system message with remediation context
+        elif operation_type == 'llm':
+            # For LLM operations, inject via messages or prompt parameter
+            if 'messages' in enhanced_kwargs and isinstance(enhanced_kwargs['messages'], list):
+                messages = enhanced_kwargs['messages'].copy()
                 system_message = {
                     "role": "system",
                     "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
                 }
-                
-                # Insert system message at the beginning
                 messages.insert(0, system_message)
-                enhanced_args[0] = messages
-                logging.info(f"💉 INJECTED: Added system message with remediation context to {len(messages)} messages")
-                
-            elif isinstance(input_arg, dict):
-                # Dictionary input - be very careful about what we modify
-                if 'messages' in input_arg and 'agent_scratchpad' not in input_arg:
-                    # Only modify if it's not an agent call
-                    messages = input_arg['messages'].copy() if isinstance(input_arg['messages'], list) else [input_arg['messages']]
-                    
-                    system_message = {
-                        "role": "system", 
-                        "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
-                    }
-                    messages.insert(0, system_message)
-                    
-                    enhanced_args[0] = {**input_arg, 'messages': messages}
-                    logging.info(f"💉 INJECTED: Enhanced dict input with system message")
-                elif 'input' in input_arg and 'agent_scratchpad' not in input_arg:
-                    # Only modify if it's not an agent call
-                    enhanced_args[0] = {
-                        **input_arg,
-                        'input': f"{remediation_prompt}\n\n{input_arg['input']}"
-                    }
-                    logging.info(f"💉 INJECTED: Enhanced dict input field")
-                else:
-                    logging.info(f"🚫 SKIPPING: Dict input contains protected agent parameters")
+                enhanced_kwargs['messages'] = messages
+                logging.info("💉 LLM INJECTION: Enhanced messages with system prompt")
+            elif 'prompt' in enhanced_kwargs:
+                original_prompt = enhanced_kwargs['prompt']
+                enhanced_kwargs['prompt'] = f"{remediation_prompt}\n\n{original_prompt}"
+                logging.info("💉 LLM INJECTION: Enhanced prompt parameter")
         
-        # Also check kwargs for input parameters - but be very selective
-        safe_prompt_keys = ['input', 'prompt', 'text', 'query']
-        for key in safe_prompt_keys:
-            if (key in enhanced_kwargs and 
-                key not in langchain_protected_params and
-                'agent_scratchpad' not in enhanced_kwargs):  # Extra safety check
-                
-                value = enhanced_kwargs[key]
-                
-                if isinstance(value, str):
-                    enhanced_kwargs[key] = f"{remediation_prompt}\n\n{value}"
-                    logging.info(f"💉 INJECTED: Enhanced kwargs['{key}'] with remediation context")
-                elif isinstance(value, list) and value and isinstance(value[0], dict):
-                    # Handle message list in kwargs
-                    messages = value.copy()
-                    system_message = {
-                        "role": "system",
-                        "content": f"{remediation_prompt}\n\nYou are an AI assistant. Please follow the guidance above when responding."
-                    }
-                    messages.insert(0, system_message)
-                    enhanced_kwargs[key] = messages
-                    logging.info(f"💉 INJECTED: Enhanced kwargs['{key}'] with system message")
-            else:
-                if key in enhanced_kwargs:
-                    logging.info(f"🚫 SKIPPING: {key} is protected or agent context detected")
+        elif operation_type == 'chain':
+            # For chain operations, inject via input parameter
+            if 'input' in enhanced_kwargs:
+                original_input = enhanced_kwargs['input']
+                enhanced_kwargs['input'] = f"{remediation_prompt}\n\n{original_input}"
+                logging.info("💉 CHAIN INJECTION: Enhanced input parameter")
+            elif 'inputs' in enhanced_kwargs and isinstance(enhanced_kwargs['inputs'], dict):
+                if 'input' in enhanced_kwargs['inputs']:
+                    original_input = enhanced_kwargs['inputs']['input']
+                    enhanced_kwargs['inputs']['input'] = f"{remediation_prompt}\n\n{original_input}"
+                    logging.info("💉 CHAIN INJECTION: Enhanced inputs['input'] parameter")
         
-        # Clear the used remediation prompt
-        if hasattr(self.error_detector, 'pending_remediation_prompts'):
-            self.error_detector.pending_remediation_prompts.clear()
+        else:
+            # Generic injection for other operation types
+            prompt_params = ['input', 'prompt', 'text', 'query', 'message']
+            for param in prompt_params:
+                if param in enhanced_kwargs and isinstance(enhanced_kwargs[param], str):
+                    original_value = enhanced_kwargs[param]
+                    enhanced_kwargs[param] = f"{remediation_prompt}\n\n{original_value}"
+                    logging.info(f"💉 GENERIC INJECTION: Enhanced {param} parameter")
+                    break
         
-        return tuple(enhanced_args), enhanced_kwargs
+        return enhanced_kwargs
+    
 
 
-class LangChainCallbackHandler:
-    """LangChain callback handler for integration with existing callback system."""
+
+class LangChainCallbackHandler(BaseCallbackHandler):
+    """Enhanced LangChain callback handler with proper BaseCallbackHandler inheritance."""
     
     def __init__(self, error_detector: ErrorDetector, logger: AigieLogger):
+        if LANGCHAIN_AVAILABLE:
+            super().__init__()
         self.error_detector = error_detector
         self.logger = logger
     
     def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs):
         """Called when a chain starts."""
-        if self.error_detector.is_monitoring:
-            self.logger.log_system_event(
-                "Chain started",
-                {
-                    "chain_name": serialized.get("name", "unknown"),
-                    "inputs": str(inputs)[:200]
-                }
-            )
+        if not self.error_detector.is_monitoring:
+            return
+            
+        # Log chain start
+        self.logger.log_system_event(
+            "Chain started",
+            {
+                "chain_name": serialized.get("name", "unknown"),
+                "chain_id": serialized.get("id", "unknown"),
+                "inputs": str(inputs)[:200],
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
+        
+        # Create enhanced error context for monitoring
+        context = ErrorContext(
+            timestamp=datetime.now(),
+            framework="langchain",
+            component="Chain",
+            method="run",
+            input_data=inputs,
+            run_id=kwargs.get("run_id"),
+            parent_run_id=kwargs.get("parent_run_id"),
+            serialized=serialized,
+            inputs=inputs,
+            tags=kwargs.get("tags", []),
+            metadata=kwargs.get("metadata", {})
+        )
+        
+        # Store context for potential error handling
+        self.error_detector.store_operation_for_retry(
+            f"chain_{kwargs.get('run_id', 'unknown')}", 
+            None, inputs, {}, context
+        )
     
     def on_chain_end(self, outputs: Dict[str, Any], **kwargs):
         """Called when a chain ends."""
-        if self.error_detector.is_monitoring:
-            self.logger.log_system_event(
-                "Chain completed",
-                {"outputs": str(outputs)[:200]}
-            )
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "Chain completed",
+            {
+                "outputs": str(outputs)[:200],
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
     
     def on_chain_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs):
         """Called when a chain encounters an error."""
-        if self.error_detector.is_monitoring:
-            # Create error context
-            context = ErrorContext(
-                timestamp=datetime.now(),
-                framework="langchain",
-                component="Chain",
-                method="run",
-                stack_trace=str(error)
-            )
+        if not self.error_detector.is_monitoring:
+            return
             
-            # Let the error detector handle it
-            self.error_detector._detect_error(error, context)
+        # Create error context
+        context = self._create_langchain_error_context(error, "Chain", "run", **kwargs)
+        
+        # Handle with chain-specific remediation
+        return self._handle_callback_error(error, context, "Chain", **kwargs)
     
     def on_tool_start(self, serialized: Dict[str, Any], input_str: str, **kwargs):
         """Called when a tool starts."""
-        if self.error_detector.is_monitoring:
-            self.logger.log_system_event(
-                "Tool started",
-                {
-                    "tool_name": serialized.get("name", "unknown"),
-                    "input": input_str[:200]
-                }
-            )
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "Tool started",
+            {
+                "tool_name": serialized.get("name", "unknown"),
+                "tool_id": serialized.get("id", "unknown"),
+                "input": input_str[:200],
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
+        
+        # Create enhanced error context for monitoring
+        context = ErrorContext(
+            timestamp=datetime.now(),
+            framework="langchain",
+            component="Tool",
+            method="run",
+            input_data={"input_str": input_str},
+            run_id=kwargs.get("run_id"),
+            parent_run_id=kwargs.get("parent_run_id"),
+            serialized=serialized,
+            tool_metadata=serialized,
+            tags=kwargs.get("tags", []),
+            metadata=kwargs.get("metadata", {})
+        )
+        
+        # Store context for potential error handling
+        self.error_detector.store_operation_for_retry(
+            f"tool_{kwargs.get('run_id', 'unknown')}", 
+            None, (input_str,), {}, context
+        )
     
     def on_tool_end(self, output: str, **kwargs):
         """Called when a tool ends."""
-        if self.error_detector.is_monitoring:
-            self.logger.log_system_event(
-                "Tool completed",
-                {"output": output[:200]}
-            )
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "Tool completed",
+            {
+                "output": output[:200],
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
     
+    def _create_langchain_error_context(self, error: Exception, component: str, method: str, **kwargs) -> ErrorContext:
+        """Create a standardized error context for LangChain callbacks."""
+        return ErrorContext(
+            timestamp=datetime.now(),
+            framework="langchain",
+            component=component,
+            method=method,
+            stack_trace=str(error),
+            langchain_error_type=type(error).__name__,
+            run_id=kwargs.get("run_id"),
+            parent_run_id=kwargs.get("parent_run_id"),
+            error=error,
+            serialized=kwargs.get("serialized", {}),
+            tool_metadata=kwargs.get("serialized", {}) if component == "Tool" else None,
+            tags=kwargs.get("tags", []),
+            metadata=kwargs.get("metadata", {})
+        )
+    
+    def _handle_callback_error(self, error: Exception, context: ErrorContext, error_type: str, **kwargs):
+        """Handle error processing for LangChain callbacks with type-specific remediation."""
+        # Use the error detector's enhanced analysis
+        detected_error = self.error_detector._detect_error(error, context)
+        
+        # Attempt automatic remediation if enabled
+        if self.error_detector.enable_automatic_retry:
+            remediation_result = self.error_detector._attempt_automatic_retry(
+                error, context, detected_error
+            )
+            if remediation_result:
+                self.logger.log_system_event(
+                    f"{error_type} error remediated automatically",
+                    {"run_id": kwargs.get("run_id"), "remediation_result": str(remediation_result)[:200]}
+                )
+                return remediation_result
+        
+        # Log the error
+        self.logger.log_error(f"{error_type} error: {error}", context)
+        return None
+
     def on_tool_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs):
         """Called when a tool encounters an error."""
-        if self.error_detector.is_monitoring:
-            # Create error context
-            context = ErrorContext(
-                timestamp=datetime.now(),
-                framework="langchain",
-                component="Tool",
-                method="run",
-                stack_trace=str(error)
-            )
+        if not self.error_detector.is_monitoring:
+            return
             
-            # Let the error detector handle it
-            self.error_detector._detect_error(error, context)
+        # Create error context
+        context = self._create_langchain_error_context(error, "Tool", "run", **kwargs)
+        
+        # Handle with tool-specific remediation
+        return self._handle_callback_error(error, context, "Tool", **kwargs)
+    
+    def on_llm_start(self, serialized: Dict[str, Any], prompts: List[str], **kwargs):
+        """Called when an LLM starts."""
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "LLM started",
+            {
+                "llm_name": serialized.get("name", "unknown"),
+                "llm_id": serialized.get("id", "unknown"),
+                "prompts_count": len(prompts),
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
+    
+    def on_llm_end(self, response: Union[LLMResult, ChatResult], **kwargs):
+        """Called when an LLM ends."""
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "LLM completed",
+            {
+                "generations_count": len(response.generations) if hasattr(response, 'generations') else 0,
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
+    
+    def on_llm_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs):
+        """Called when an LLM encounters an error."""
+        if not self.error_detector.is_monitoring:
+            return
+            
+        # Create error context
+        context = self._create_langchain_error_context(error, "LLM", "generate", **kwargs)
+        
+        # Handle with LLM-specific remediation
+        return self._handle_callback_error(error, context, "LLM", **kwargs)
+    
+    def on_retriever_start(self, serialized: Dict[str, Any], query: str, **kwargs):
+        """Called when a retriever starts."""
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "Retriever started",
+            {
+                "retriever_name": serialized.get("name", "unknown"),
+                "query": query[:200],
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
+    
+    def on_retriever_end(self, documents: List[Any], **kwargs):
+        """Called when a retriever ends."""
+        if not self.error_detector.is_monitoring:
+            return
+            
+        self.logger.log_system_event(
+            "Retriever completed",
+            {
+                "documents_count": len(documents),
+                "run_id": kwargs.get("run_id"),
+                "parent_run_id": kwargs.get("parent_run_id")
+            }
+        )
+    
+    def on_retriever_error(self, error: Union[Exception, KeyboardInterrupt], **kwargs):
+        """Called when a retriever encounters an error."""
+        if not self.error_detector.is_monitoring:
+            return
+            
+        # Create error context
+        context = self._create_langchain_error_context(error, "Retriever", "get_relevant_documents", **kwargs)
+        
+        # Handle with retriever-specific remediation
+        return self._handle_callback_error(error, context, "Retriever", **kwargs)

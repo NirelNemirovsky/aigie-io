@@ -169,7 +169,9 @@ class AigieAutoIntegrator:
             "error_summary": self.error_detector.get_error_summary(),
             "performance_summary": self.error_detector.performance_monitor.get_performance_summary() if self.error_detector.performance_monitor else None,
             "langchain_analysis": {
-                "interception_status": self.langchain_interceptor.get_interception_status()
+                "interception_status": self.langchain_interceptor.get_interception_status(),
+                "callback_handler_available": hasattr(self.langchain_interceptor, 'callback_handler'),
+                "callback_handler_registered": self.langchain_interceptor.callback_handler is not None
             },
             "langgraph_analysis": {
                 "interception_status": self.langgraph_interceptor.get_interception_status(),
@@ -180,6 +182,14 @@ class AigieAutoIntegrator:
         }
         
         return analysis
+    
+    def get_langchain_callback_handler(self):
+        """Get the LangChain callback handler for manual registration."""
+        return self.langchain_interceptor.get_callback_handler()
+    
+    def register_callback_with_langchain_component(self, component):
+        """Register the callback handler with a specific LangChain component."""
+        return self.langchain_interceptor.register_with_langchain_component(component)
     
     @contextmanager
     def temporary_integration(self):
@@ -299,6 +309,12 @@ def show_analysis():
             integrator.logger.console.print(f"📈 Total Executions: {perf.get('total_executions', 0)}")
             integrator.logger.console.print(f"⏱️  Avg Execution Time: {perf.get('avg_execution_time', 0):.2f}s")
         
+        # LangChain analysis
+        if analysis.get("langchain_analysis"):
+            lc_analysis = analysis["langchain_analysis"]
+            integrator.logger.console.print(f"🔗 LangChain Callback Handler: {'✅ Available' if lc_analysis.get('callback_handler_available') else '❌ Not Available'}")
+            integrator.logger.console.print(f"📞 Callback Handler Registered: {'✅ Yes' if lc_analysis.get('callback_handler_registered') else '❌ No'}")
+        
         # LangGraph analysis
         if analysis.get("langgraph_analysis"):
             lg_analysis = analysis["langgraph_analysis"]
@@ -309,6 +325,22 @@ def show_analysis():
             if lg_analysis.get("node_execution_stats"):
                 node_count = lg_analysis["node_execution_stats"]["total_nodes"]
                 integrator.logger.console.print(f"🔗 Tracked Nodes: {node_count}")
+
+
+def get_langchain_callback_handler():
+    """Get the LangChain callback handler for manual registration."""
+    integrator = get_integrator()
+    if integrator:
+        return integrator.get_langchain_callback_handler()
+    return None
+
+
+def register_callback_with_langchain_component(component):
+    """Register the callback handler with a specific LangChain component."""
+    integrator = get_integrator()
+    if integrator:
+        return integrator.register_callback_with_langchain_component(component)
+    return False
 
 
 # Magic methods for IPython/Jupyter integration

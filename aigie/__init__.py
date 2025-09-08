@@ -19,7 +19,8 @@ from .utils.config import AigieConfig
 from .auto_integration import (
     auto_integrate, get_integrator, stop_integration, 
     get_status, get_analysis, enable_monitoring, 
-    disable_monitoring, show_status, show_analysis
+    disable_monitoring, show_status, show_analysis,
+    get_langchain_callback_handler, register_callback_with_langchain_component
 )
 
 __all__ = [
@@ -38,4 +39,6 @@ __all__ = [
     "disable_monitoring",
     "show_status",
     "show_analysis",
+    "get_langchain_callback_handler",
+    "register_callback_with_langchain_component",
 ]
