@@ -545,7 +545,7 @@ Provide a score (0.0-1.0) and reasoning.""")
             "step_reasoning": step.step_reasoning or "Not provided",
             "input_summary": self._summarize_input_data(step.input_data),
             "conversation_context": self._format_conversation_context(step.conversation_history),
-            "timestamp": step.timestamp.isoformat(),
+            "timestamp": step.timestamp.isoformat() if hasattr(step.timestamp, 'isoformat') else str(step.timestamp),
             "expected_output_type": self._infer_expected_output_type(step),
             "format_instructions": self.output_parser.get_format_instructions() if hasattr(self, 'output_parser') else ""
         }
@@ -901,7 +901,7 @@ AGENT CONTEXT:
 EXECUTION DETAILS:
 - Input Data: {self._summarize_input_data(step.input_data)}
 - Previous Conversation: {self._format_conversation_context(step.conversation_history)}
-- Timestamp: {step.timestamp.isoformat()}
+- Timestamp: {step.timestamp.isoformat() if hasattr(step.timestamp, 'isoformat') else str(step.timestamp)}
 
 Please provide your judgment as JSON with the following structure:
 {{

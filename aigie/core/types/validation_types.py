@@ -163,6 +163,14 @@ class ValidationResult:
     validation_timestamp: datetime = field(default_factory=datetime.now)
     validator_version: str = "1.0.0"
     
+    @property
+    def status(self) -> ValidationStatus:
+        """Get validation status based on is_valid."""
+        if self.is_valid:
+            return ValidationStatus.VALID
+        else:
+            return ValidationStatus.INVALID
+    
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
         return {

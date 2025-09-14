@@ -17,7 +17,7 @@ from ..types.validation_types import (
 class StepCorrector:
     """Handles automatic correction of invalid steps using LLM intelligence."""
     
-    def __init__(self, gemini_analyzer: GeminiAnalyzer):
+    def __init__(self, gemini_analyzer: Optional[GeminiAnalyzer] = None):
         self.gemini_analyzer = gemini_analyzer
         self.correction_strategies = {
             CorrectionStrategy.PARAMETER_ADJUSTMENT: self._adjust_parameters,
@@ -167,6 +167,15 @@ Provide your analysis as JSON:
 """
         
         try:
+            if self.gemini_analyzer is None:
+                # Fallback to basic correction without AI
+                return {
+                    'primary_issue': 'Unknown error',
+                    'confidence': 0.5,
+                    'suggested_strategies': [CorrectionStrategy.PARAMETER_ADJUSTMENT],
+                    'context': 'No AI analyzer available'
+                }
+            
             response = await self.gemini_analyzer._generate_content_async(prompt)
             import json
             

@@ -90,7 +90,7 @@ class PipelineMetrics:
 class ValidationPipeline:
     """Multi-stage validation pipeline with performance optimization."""
     
-    def __init__(self, validator: AdvancedRuntimeValidator, config: Optional[Dict[ValidationStage, ValidationStageConfig]] = None):
+    def __init__(self, validator: Optional[AdvancedRuntimeValidator] = None, config: Optional[Dict[ValidationStage, ValidationStageConfig]] = None):
         self.validator = validator
         self.config = config or self._get_default_config()
         self.metrics = PipelineMetrics()
@@ -321,6 +321,16 @@ class ValidationPipeline:
         """Fast validation stage: Quick validation using essential strategies."""
         stage_config = self.config[ValidationStage.FAST_VALIDATION]
         
+        if self.validator is None:
+            # Fallback validation without AI
+            return ValidationResult(
+                is_valid=True,
+                confidence=0.5,
+                reasoning="No validator available - assuming valid",
+                issues=[],
+                suggestions=[]
+            )
+        
         # Use only essential strategies for speed
         essential_strategies = [
             ValidationStrategy.GOAL_ALIGNMENT,
@@ -349,6 +359,16 @@ class ValidationPipeline:
     async def _deep_validation_stage(self, step: ExecutionStep, previous_result: Optional[ValidationResult]) -> ValidationResult:
         """Deep validation stage: Comprehensive validation using all strategies."""
         stage_config = self.config[ValidationStage.DEEP_VALIDATION]
+        
+        if self.validator is None:
+            # Fallback validation without AI
+            return ValidationResult(
+                is_valid=True,
+                confidence=0.5,
+                reasoning="No validator available - assuming valid",
+                issues=[],
+                suggestions=[]
+            )
         
         # Use all available strategies
         all_strategies = list(ValidationStrategy)
