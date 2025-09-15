@@ -200,13 +200,7 @@ class ValidationDemo:
                         "max_results": 10
                     },
                     agent_goal="Find and analyze recent research papers on AI safety",
-                    step_reasoning="I need to search for recent papers on AI safety to provide comprehensive information to the user",
-                    expected_output="List of relevant papers with summaries",
-                    context={
-                        "user_intent": "research",
-                        "domain": "ai_safety",
-                        "urgency": "normal"
-                    }
+                    step_reasoning="I need to search for recent papers on AI safety to provide comprehensive information to the user"
                 ),
                 "should_pass": True
             },
@@ -223,13 +217,7 @@ class ValidationDemo:
                         "requirements": ["error_handling", "logging"]
                     },
                     agent_goal="Generate Python code for mathematical operations",
-                    step_reasoning="The user wants a division function, I'll create a simple one",
-                    expected_output="Python function with division",
-                    context={
-                        "user_intent": "code_generation",
-                        "domain": "programming",
-                        "safety_concerns": True
-                    }
+                    step_reasoning="The user wants a division function, I'll create a simple one"
                 ),
                 "should_pass": False
             },
@@ -245,13 +233,7 @@ class ValidationDemo:
                         "operations": ["clean", "transform", "analyze"]
                     },
                     agent_goal="Process and analyze the dataset",
-                    step_reasoning="I'll process the data step by step",
-                    expected_output="Processed dataset with analysis",
-                    context={
-                        "user_intent": "data_analysis",
-                        "domain": "data_science",
-                        "data_size": "large"
-                    }
+                    step_reasoning="I'll process the data step by step"
                 ),
                 "should_pass": False
             },
@@ -268,13 +250,7 @@ class ValidationDemo:
                         "style": "educational"
                     },
                     agent_goal="Create educational content about machine learning",
-                    step_reasoning="I'll write a comprehensive introduction to ML concepts",
-                    expected_output="Educational article about ML",
-                    context={
-                        "user_intent": "content_creation",
-                        "domain": "education",
-                        "audience": "beginners"
-                    }
+                    step_reasoning="I'll write a comprehensive introduction to ML concepts"
                 ),
                 "should_pass": True
             }
@@ -546,7 +522,7 @@ async def test_simple_validation():
             enabled_strategies=[
                 ValidationStrategy.GOAL_ALIGNMENT,
                 ValidationStrategy.SAFETY_COMPLIANCE,
-                ValidationStrategy.REASONING_QUALITY
+                ValidationStrategy.OUTPUT_QUALITY
             ],
             enable_parallel_strategies=True,
             cache_ttl_seconds=60
@@ -563,20 +539,15 @@ async def test_simple_validation():
         
         test_step = ExecutionStep(
             step_id="test_001",
-        framework="langchain",
+            framework="langchain",
             component="test_agent",
             operation="test_operation",
-        input_data={
+            input_data={
                 "query": "What is the capital of France?",
                 "context": "geography_quiz"
             },
             agent_goal="Answer the user's geography question accurately",
-            step_reasoning="I need to provide the correct answer to the geography question",
-            expected_output="The capital of France is Paris",
-            context={
-                "user_intent": "question_answering",
-                "domain": "geography"
-            }
+            step_reasoning="I need to provide the correct answer to the geography question"
         )
         
         print("✅ Test execution step created")

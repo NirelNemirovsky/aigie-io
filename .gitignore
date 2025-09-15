@@ -189,6 +189,7 @@ Thumbs.db
 # IDE specific
 .vscode/
 .idea/
+.cursor/
 *.sublime-project
 *.sublime-workspace
 

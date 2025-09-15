@@ -70,14 +70,14 @@ class TestErrorTypes(unittest.TestCase):
     
     def test_error_classification(self):
         """Test error classification logic."""
+        # Test timeout error classification with generic context
         context = ErrorContext(
             timestamp=None,
-            framework="langchain",
-            component="LLMChain",
+            framework="generic",
+            component="GenericComponent",
             method="run"
         )
         
-        # Test timeout error classification
         timeout_exception = Exception("Request timed out after 30 seconds")
         error_type = classify_error(timeout_exception, context)
         self.assertEqual(error_type, ErrorType.TIMEOUT)
@@ -86,6 +86,18 @@ class TestErrorTypes(unittest.TestCase):
         api_exception = Exception("HTTP 500 Internal Server Error")
         error_type = classify_error(api_exception, context)
         self.assertEqual(error_type, ErrorType.API_ERROR)
+        
+        # Test LangChain-specific classification
+        langchain_context = ErrorContext(
+            timestamp=None,
+            framework="langchain",
+            component="LLMChain",
+            method="run"
+        )
+        
+        langchain_exception = Exception("Request timed out after 30 seconds")
+        error_type = classify_error(langchain_exception, langchain_context)
+        self.assertEqual(error_type, ErrorType.LANGCHAIN_CHAIN_ERROR)
     
     def test_severity_determination(self):
         """Test severity determination logic."""
@@ -136,9 +148,9 @@ class TestPerformanceMonitor(unittest.TestCase):
         """Test performance issue detection."""
         # Create metrics that would trigger warnings
         metrics = type('MockMetrics', (), {
-            'execution_time': 60.0,  # Over threshold
-            'memory_delta': 2048.0,  # Over threshold
-            'cpu_delta': 90.0  # Over threshold
+            'execution_time': 65.0,  # Over threshold (60s)
+            'memory_delta': 2048.0,  # Over threshold (1024MB)
+            'cpu_delta': 90.0  # Over threshold (80%)
         })()
         
         warnings = self.monitor.check_performance_issues(metrics)
@@ -147,8 +159,8 @@ class TestPerformanceMonitor(unittest.TestCase):
         # Check that warnings contain expected content
         warning_text = " ".join(warnings).lower()
         self.assertIn("slow execution", warning_text)
-        self.assertIn("memory", warning_text)
-        self.assertIn("cpu", warning_text)
+        self.assertIn("high memory usage", warning_text)
+        self.assertIn("high cpu usage", warning_text)
 
 
 class TestResourceMonitor(unittest.TestCase):
