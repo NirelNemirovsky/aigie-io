@@ -1,162 +1,111 @@
-# AI Research Assistant Examples
+# Aigie Examples
 
-Comprehensive demonstrations of aigie's error detection and monitoring capabilities with modern LangChain and LangGraph patterns.
+This directory contains real-world examples demonstrating Aigie's capabilities with various AI agent frameworks and use cases.
 
-## 🚀 Quick Start
+## Open Deep Research Integration
 
-```bash
-cd examples
+The `open_deep_research/` subdirectory contains a complete integration of Aigie with the [Open Deep Research](https://github.com/langchain-ai/open_deep_research) agent from LangChain AI.
 
-# 🚀 Start Here
-python3 ai_research_assistant.py          # Comprehensive research assistant with full monitoring demo
+### What's Included
 
-# 🌟 Advanced Features  
-python3 advanced_langgraph_features.py    # Human-in-the-loop • SQLite checkpointing • Error recovery
-```
+- **Original Open Deep Research Agent**: Full LangGraph-based research agent
+- **Aigie Integration Examples**: Multiple approaches to integrating Aigie monitoring
+- **Working Configuration**: Google AI (Gemini) + Tavily search setup
+- **Comprehensive Documentation**: Integration guides and examples
 
-## 📋 What These Examples Demonstrate
+### Key Files
 
-### Modern Framework Integration
-- **LangChain v0.2/0.3 Patterns**: Using `init_chat_model()`, `@tool`, LCEL chains
-- **LangGraph ReAct Agents**: Pre-built agents with `create_react_agent`  
-- **Streaming & Events**: Real-time monitoring with `stream_events`/`astream_events`
-- **Checkpointing**: Persistent state management with MemorySaver/SqliteSaver
-- **Human-in-the-Loop**: Interactive workflows with approval checkpoints
+- `aigie_monitored_researcher.py` - Main Aigie-integrated research agent
+- `test_agent.py` - Basic Open Deep Research agent test
+- `working_aigie_demo.py` - Standalone Aigie demonstration
+- `AIGIE_INTEGRATION_README.md` - Detailed integration guide
+- `INTEGRATION_SUMMARY.md` - Project completion summary
 
-### Complete Aigie Monitoring (All Shown In Context)
-- **LangChain Interception**: ChatModels, LCEL Runnables, @tool functions, output parsers
-- **LangGraph Monitoring**: State graphs, streaming events, checkpoints, human interactions
-- **Real-Time Analytics**: Event stream analysis, checkpoint operations, performance metrics
-- **Error Intelligence**: AI-powered detection, classification, and automatic remediation
-- **System Health**: Resource monitoring, performance tracking, recovery statistics
-- **Production Insights**: All monitoring capabilities demonstrated during realistic workflows
+### Quick Start
 
-## 🔧 Requirements
+1. **Navigate to the example**:
+   ```bash
+   cd examples/open_deep_research
+   ```
 
-- Python 3.9+
-- **Modern Dependencies**: Latest LangChain, LangGraph, and LangChain community packages
-- **API Access**: OpenAI, Anthropic, or Google AI for model providers
-- **Gemini API Key (Recommended)**: Get from [Google AI Studio](https://makersuite.google.com/app/apikey)
-  ```bash
-  export GEMINI_API_KEY="your-api-key-here"
-  export OPENAI_API_KEY="your-openai-key"  # For ChatGPT models
-  export ANTHROPIC_API_KEY="your-anthropic-key"  # For Claude models
-  ```
+2. **Set up environment**:
+   ```bash
+   # Copy environment template
+   cp .env.example .env
+   
+   # Edit .env with your API keys
+   # GOOGLE_API_KEY=your_google_api_key
+   # TAVILY_API_KEY=your_tavily_api_key
+   ```
 
-## 🏗️ Modern Architecture
+3. **Install dependencies**:
+   ```bash
+   # Create virtual environment
+   python -m venv .venv
+   source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+   
+   # Install dependencies
+   pip install -e .
+   ```
 
-### Updated Research Assistant (`ai_research_assistant.py`)
-Uses modern LangGraph patterns with:
-- **ReAct Agent**: Built with `create_react_agent` from `langgraph.prebuilt`
-- **Function-based Tools**: Simple `@tool` decorated functions instead of classes
-- **Modern Chat Models**: Using `init_chat_model()` with string model identifiers
-- **Event Streaming**: Real-time monitoring with `astream_events()`
-- **Checkpointing**: Persistent state with `MemorySaver`
+4. **Run examples**:
+   ```bash
+   # Test basic Open Deep Research agent
+   python test_agent.py
+   
+   # Test Aigie-monitored research agent
+   python aigie_monitored_researcher.py
+   ```
 
-### Research Tools (Modern Implementation)
-1. **web_search_tool**: Simple function for finding research information
-2. **document_analysis_tool**: Analyzes documents and extracts insights  
-3. **code_generation_tool**: Generates code snippets for data analysis
+### Features Demonstrated
 
-### Human-in-the-Loop Features
-- **Approval Checkpoints**: User can approve/reject agent actions
-- **Interactive Corrections**: Modify agent plans before execution
-- **Error Intervention**: Human oversight when errors are detected
+- **Real-time Performance Monitoring**: Track execution time, memory usage, CPU usage
+- **Error Detection & Recovery**: Automatic error detection and intelligent retry
+- **Comprehensive Logging**: Structured logging with Aigie's logging system
+- **Quality Assurance**: Runtime validation and monitoring
+- **Multi-Agent Support**: Monitoring complex multi-agent workflows
 
-## 🎯 Enhanced Features
+### Integration Approaches
 
-- **Real-time Stream Monitoring**: Every event in the agent execution is tracked
-- **Modern Component Detection**: Monitors ChatModels, LCEL chains, modern tools
-- **Checkpoint Monitoring**: Tracks state persistence operations
-- **Event-Driven Analytics**: Detailed analysis of agent execution patterns
-- **AI-Powered Remediation**: Gemini analyzes errors and suggests fixes
-- **Streaming Analytics**: Real-time performance metrics during execution
+1. **Wrapper Pattern**: `aigie_monitored_researcher.py` - Wraps the original agent
+2. **Direct Integration**: `aigie_integrated_researcher.py` - Direct modification
+3. **Simple Demo**: `working_aigie_demo.py` - Standalone demonstration
 
-## 📊 What You'll See
+### API Keys Required
 
-The updated examples will:
-1. Initialize modern LangChain/LangGraph components with aigie monitoring
-2. Create ReAct agents with real-time event streaming
-3. Execute workflows with comprehensive error detection
-4. Show streaming event analysis and checkpoint monitoring
-5. Demonstrate human-in-the-loop intervention capabilities
-6. Display modern monitoring dashboards and analytics
+- **Google API Key**: For Gemini models (research, compression, final report, summarization)
+- **Tavily API Key**: For web search functionality
 
-## 📚 Example Details
+### Benefits of Aigie Integration
 
-### 🚀 ai_research_assistant.py
-**Comprehensive Research Assistant & Monitoring Demo**
-- **Complete workflow**: Web search, document analysis, code generation with realistic complexity
-- **Comprehensive monitoring demo**: Shows ALL interceptor capabilities in realistic context
-- **Error simulation**: Extensive testing of aigie's detection and recovery capabilities
-- **Real-world patterns**: 900+ lines demonstrating production-ready workflows
-- **Full analytics**: LangChain/LangGraph monitoring, streaming analysis, error analytics
-- **Interactive monitoring**: See interceptor capabilities during actual agent execution
+- **Production Monitoring**: Real-time performance and error tracking
+- **Quality Assurance**: Automatic validation and error detection
+- **Debugging Support**: Comprehensive logging and error context
+- **Scalability**: Monitor multiple agents and complex workflows
+- **Reliability**: Intelligent retry and error recovery
 
-**Perfect for:** Understanding complete workflows AND seeing all monitoring capabilities in action
+## Other Examples
 
-### 🌟 advanced_langgraph_features.py
-**Advanced Production Features**
-- **Human-in-the-loop**: Approval workflows with interrupt() and checkpoints
-- **Advanced persistence**: SQLite checkpointing with thread management
-- **Error recovery**: Conditional routing and intelligent retry patterns
-- **Multi-agent coordination**: Complex workflow orchestration
-- **Advanced state management**: Proper TypedDict schemas and validation
-- **Production patterns**: Command objects and dynamic flow control
+Additional examples will be added here demonstrating Aigie's integration with:
+- LangChain agents
+- LangGraph workflows
+- Custom AI applications
+- Multi-agent systems
+- Production deployments
 
-**Perfect for:** Production deployments, advanced LangGraph features, enterprise workflows
+## Contributing
 
-## 🚨 Troubleshooting
+To add new examples:
 
-| Issue | Solution |
-|-------|----------|
-| Gemini not available | Set `GOOGLE_CLOUD_PROJECT` or `GEMINI_API_KEY` |
-| Import errors | Install requirements: `pip install -r requirements.txt` |
-| LangGraph errors | Update to latest version: `pip install -U langgraph` |
-| Permission errors | Check Google Cloud authentication: `gcloud auth login` |
+1. Create a new subdirectory for your example
+2. Include a README.md explaining the integration
+3. Provide working code and configuration
+4. Document API key requirements
+5. Include usage instructions
 
-## 🔧 Gemini API Key Setup
+## Support
 
-For a simple demonstration of setting up Aigie with Gemini API key authentication:
-
-```bash
-python3 gemini_api_key_setup.py
-```
-
-This example shows:
-- How to configure Gemini API key authentication
-- Testing error analysis capabilities
-- Generating remediation strategies
-- Configuration options and best practices
-
-## 📁 Updated Import Paths
-
-With the new organized structure, imports have been updated:
-
-```python
-# Old imports (still work via __init__.py)
-from aigie.core import ErrorDetector, PerformanceMonitor, GeminiAnalyzer
-from aigie.core import RuntimeValidator, StepCorrector, ValidationEngine
-
-# New direct imports (recommended for clarity)
-from aigie.core.error_handling.error_detector import ErrorDetector
-from aigie.core.monitoring.monitoring import PerformanceMonitor
-from aigie.core.ai.gemini_analyzer import GeminiAnalyzer
-from aigie.core.validation.runtime_validator import RuntimeValidator
-from aigie.core.validation.step_corrector import StepCorrector
-from aigie.core.validation.validation_engine import ValidationEngine
-```
-
-## 🔍 Customization
-
-You can modify the example to:
-- Change error simulation rates in the `Config` class
-- Add new research tools by extending `ResearchTool`
-- Modify the LangGraph workflow structure
-- Adjust monitoring and retry parameters
-
-## 📚 Related Documentation
-
-- [Aigie Core Documentation](../README.md)
-- [LangGraph Documentation](https://langchain-ai.github.io/langgraph/)
-- [LangChain Documentation](https://python.langchain.com/)
+For questions about these examples or Aigie integration:
+- Check the main Aigie documentation
+- Review the integration README files
+- Open an issue in the main Aigie repository

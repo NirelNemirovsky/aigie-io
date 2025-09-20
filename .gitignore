@@ -209,3 +209,20 @@ site/
 .env.development
 .env.test
 .env.production
+
+# Open Deep Research subdirectory
+open_deep_research/.venv/
+open_deep_research/venv/
+open_deep_research/.env
+open_deep_research/__pycache__/
+open_deep_research/*.pyc
+open_deep_research/*.pyo
+open_deep_research/*.pyd
+open_deep_research/.pytest_cache/
+open_deep_research/.coverage
+open_deep_research/htmlcov/
+open_deep_research/.tox/
+open_deep_research/.nox/
+open_deep_research/build/
+open_deep_research/dist/
+open_deep_research/*.egg-info/
