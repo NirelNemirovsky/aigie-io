@@ -24,14 +24,20 @@ from langchain_core.tools import (
     ToolException,
     tool,
 )
-from langchain_mcp_adapters.client import MultiServerMCPClient
+try:
+    from langchain_mcp_adapters.client import MultiServerMCPClient
+except ImportError:
+    MultiServerMCPClient = None
 from langgraph.config import get_store
-from mcp import McpError
+try:
+    from mcp import McpError
+except ImportError:
+    McpError = Exception
 from tavily import AsyncTavilyClient
 
-from open_deep_research.configuration import Configuration, SearchAPI
-from open_deep_research.prompts import summarize_webpage_prompt
-from open_deep_research.state import ResearchComplete, Summary
+from .configuration import Configuration, SearchAPI
+from .prompts import summarize_webpage_prompt
+from .state import ResearchComplete, Summary
 
 ##########################
 # Tavily Search Tool Utils

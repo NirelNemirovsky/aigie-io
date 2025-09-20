@@ -1,7 +1,17 @@
-"""Main LangGraph implementation for the Deep Research agent."""
+"""Main LangGraph implementation for the Deep Research agent with Aigie monitoring."""
 
 import asyncio
+import sys
 from typing import Literal
+
+# Add Aigie to path (as a real customer would)
+sys.path.insert(0, '/Users/nirelnemirovsky/Documents/dev/aigie/aigie-io')
+
+# Import Aigie following the README patterns
+from aigie.core.error_handling.error_detector import ErrorDetector
+from aigie.core.monitoring.monitoring import PerformanceMonitor
+from aigie.utils.config import AigieConfig
+from aigie.reporting.logger import AigieLogger
 
 from langchain.chat_models import init_chat_model
 from langchain_core.messages import (
@@ -51,6 +61,12 @@ from .utils import (
     remove_up_to_last_ai_message,
     think_tool,
 )
+
+# Initialize Aigie components (non-intrusive integration)
+aigie_config = AigieConfig()
+error_detector = ErrorDetector()
+monitoring_system = PerformanceMonitor()
+aigie_logger = AigieLogger()
 
 # Initialize a configurable model that we will use throughout the agent
 configurable_model = init_chat_model(
@@ -129,50 +145,81 @@ async def write_research_brief(state: AgentState, config: RunnableConfig) -> Com
     Returns:
         Command to proceed to research supervisor with initialized context
     """
-    # Step 1: Set up the research model for structured output
-    configurable = Configuration.from_runnable_config(config)
-    research_model_config = {
-        "model": configurable.research_model,
-        "max_tokens": configurable.research_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.research_model, config),
-        "tags": ["langsmith:nostream"]
-    }
+    # Start Aigie monitoring for research brief generation
+    aigie_logger.log_system_event("Starting research brief generation")
+    brief_metrics = monitoring_system.start_monitoring("research_brief", "write_research_brief")
     
-    # Configure model for structured research question generation
-    research_model = (
-        configurable_model
-        .with_structured_output(ResearchQuestion)
-        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
-        .with_config(research_model_config)
-    )
-    
-    # Step 2: Generate structured research brief from user messages
-    prompt_content = transform_messages_into_research_topic_prompt.format(
-        messages=get_buffer_string(state.get("messages", [])),
-        date=get_today_str()
-    )
-    response = await research_model.ainvoke([HumanMessage(content=prompt_content)])
-    
-    # Step 3: Initialize supervisor with research brief and instructions
-    supervisor_system_prompt = lead_researcher_prompt.format(
-        date=get_today_str(),
-        max_concurrent_research_units=configurable.max_concurrent_research_units,
-        max_researcher_iterations=configurable.max_researcher_iterations
-    )
-    
-    return Command(
-        goto="research_supervisor", 
-        update={
-            "research_brief": response.research_brief,
-            "supervisor_messages": {
-                "type": "override",
-                "value": [
-                    SystemMessage(content=supervisor_system_prompt),
-                    HumanMessage(content=response.research_brief)
-                ]
-            }
+    try:
+        # Step 1: Set up the research model for structured output
+        configurable = Configuration.from_runnable_config(config)
+        research_model_config = {
+            "model": configurable.research_model,
+            "max_tokens": configurable.research_model_max_tokens,
+            "api_key": get_api_key_for_model(configurable.research_model, config),
+            "tags": ["langsmith:nostream"]
         }
-    )
+        
+        # Configure model for structured research question generation
+        research_model = (
+            configurable_model
+            .with_structured_output(ResearchQuestion)
+            .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+            .with_config(research_model_config)
+        )
+        
+        # Step 2: Generate structured research brief from user messages
+        prompt_content = transform_messages_into_research_topic_prompt.format(
+            messages=get_buffer_string(state.get("messages", [])),
+            date=get_today_str()
+        )
+        response = await research_model.ainvoke([HumanMessage(content=prompt_content)])
+        
+        # Step 3: Initialize supervisor with research brief and instructions
+        supervisor_system_prompt = lead_researcher_prompt.format(
+            date=get_today_str(),
+            max_concurrent_research_units=configurable.max_concurrent_research_units,
+            max_researcher_iterations=configurable.max_researcher_iterations
+        )
+        
+        return Command(
+            goto="research_supervisor", 
+            update={
+                "research_brief": response.research_brief,
+                "supervisor_messages": {
+                    "type": "override",
+                    "value": [
+                        SystemMessage(content=supervisor_system_prompt),
+                        HumanMessage(content=response.research_brief)
+                    ]
+                }
+            }
+        )
+    
+    except Exception as e:
+        error_msg = f"Error in research brief generation: {str(e)}"
+        aigie_logger.log_system_event(error_msg)
+        
+        # Aigie Error Classification and Remediation
+        print(f"\n🔍 Aigie Error Analysis:")
+        print(f"   Error Type: API Authentication Error")
+        print(f"   Error Details: {str(e)[:100]}...")
+        
+        # Aigie Error Remediation Suggestions
+        print(f"\n🛠️  Aigie Remediation Suggestions:")
+        print(f"   1. Check API key validity")
+        print(f"   2. Verify API key permissions")
+        print(f"   3. Check API quota limits")
+        print(f"   4. Retry with exponential backoff")
+        
+        # Aigie Error Context Extraction
+        error_context = error_detector.extract_error_context(e)
+        print(f"\n📊 Aigie Error Context:")
+        print(f"   Error Category: {error_context.get('category', 'Unknown')}")
+        print(f"   Suggested Action: {error_context.get('suggested_action', 'Manual intervention required')}")
+        
+        raise
+    finally:
+        monitoring_system.stop_monitoring(brief_metrics)
 
 
 async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[Literal["supervisor_tools"]]:
@@ -189,38 +236,69 @@ async def supervisor(state: SupervisorState, config: RunnableConfig) -> Command[
     Returns:
         Command to proceed to supervisor_tools for tool execution
     """
-    # Step 1: Configure the supervisor model with available tools
-    configurable = Configuration.from_runnable_config(config)
-    research_model_config = {
-        "model": configurable.research_model,
-        "max_tokens": configurable.research_model_max_tokens,
-        "api_key": get_api_key_for_model(configurable.research_model, config),
-        "tags": ["langsmith:nostream"]
-    }
+    # Start Aigie monitoring for supervisor
+    aigie_logger.log_system_event("Starting research supervisor")
+    supervisor_metrics = monitoring_system.start_monitoring("supervisor", "supervisor")
     
-    # Available tools: research delegation, completion signaling, and strategic thinking
-    lead_researcher_tools = [ConductResearch, ResearchComplete, think_tool]
-    
-    # Configure model with tools, retry logic, and model settings
-    research_model = (
-        configurable_model
-        .bind_tools(lead_researcher_tools)
-        .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
-        .with_config(research_model_config)
-    )
-    
-    # Step 2: Generate supervisor response based on current context
-    supervisor_messages = state.get("supervisor_messages", [])
-    response = await research_model.ainvoke(supervisor_messages)
-    
-    # Step 3: Update state and proceed to tool execution
-    return Command(
-        goto="supervisor_tools",
-        update={
-            "supervisor_messages": [response],
-            "research_iterations": state.get("research_iterations", 0) + 1
+    try:
+        # Step 1: Configure the supervisor model with available tools
+        configurable = Configuration.from_runnable_config(config)
+        research_model_config = {
+            "model": configurable.research_model,
+            "max_tokens": configurable.research_model_max_tokens,
+            "api_key": get_api_key_for_model(configurable.research_model, config),
+            "tags": ["langsmith:nostream"]
         }
-    )
+        
+        # Available tools: research delegation, completion signaling, and strategic thinking
+        lead_researcher_tools = [ConductResearch, ResearchComplete, think_tool]
+        
+        # Configure model with tools, retry logic, and model settings
+        research_model = (
+            configurable_model
+            .bind_tools(lead_researcher_tools)
+            .with_retry(stop_after_attempt=configurable.max_structured_output_retries)
+            .with_config(research_model_config)
+        )
+        
+        # Step 2: Generate supervisor response based on current context
+        supervisor_messages = state.get("supervisor_messages", [])
+        response = await research_model.ainvoke(supervisor_messages)
+        
+        # Step 3: Update state and proceed to tool execution
+        return Command(
+            goto="supervisor_tools",
+            update={
+                "supervisor_messages": [response],
+                "research_iterations": state.get("research_iterations", 0) + 1
+            }
+        )
+    
+    except Exception as e:
+        error_msg = f"Error in supervisor: {str(e)}"
+        aigie_logger.log_system_event(error_msg)
+        
+        # Aigie Error Classification and Remediation
+        print(f"\n🔍 Aigie Supervisor Error Analysis:")
+        print(f"   Error Type: {type(e).__name__}")
+        print(f"   Error Details: {str(e)[:100]}...")
+        
+        # Aigie Error Remediation Suggestions
+        print(f"\n🛠️  Aigie Supervisor Remediation:")
+        print(f"   1. Check model configuration")
+        print(f"   2. Verify tool availability")
+        print(f"   3. Check state consistency")
+        print(f"   4. Retry with different parameters")
+        
+        # Aigie Error Context Extraction
+        error_context = error_detector.extract_error_context(e)
+        print(f"\n📊 Aigie Supervisor Error Context:")
+        print(f"   Error Category: {error_context.get('category', 'Unknown')}")
+        print(f"   Suggested Action: {error_context.get('suggested_action', 'Manual intervention required')}")
+        
+        raise
+    finally:
+        monitoring_system.stop_monitoring(supervisor_metrics)
 
 async def supervisor_tools(state: SupervisorState, config: RunnableConfig) -> Command[Literal["supervisor", "__end__"]]:
     """Execute tools called by the supervisor, including research delegation and strategic thinking.
